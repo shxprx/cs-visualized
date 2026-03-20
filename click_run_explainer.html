@@ -1,0 +1,1425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>What Happens When You Click Run?</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Syne:wght@400;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050810;
+    --surface: #0d1117;
+    --border: #1e2a3a;
+    --accent1: #00f5ff;
+    --accent2: #ff6b35;
+    --accent3: #a855f7;
+    --accent4: #22c55e;
+    --accent5: #f59e0b;
+    --text: #e2e8f0;
+    --text-dim: #64748b;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    overflow-x: hidden;
+  }
+
+  /* SCANLINE OVERLAY */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,245,255,0.015) 2px, rgba(0,245,255,0.015) 4px);
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* HERO */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,245,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,245,255,0.04) 1px, transparent 1px);
+    background-size: 60px 60px;
+    animation: gridShift 20s linear infinite;
+  }
+
+  @keyframes gridShift {
+    0% { transform: perspective(500px) rotateX(20deg) translateY(0); }
+    100% { transform: perspective(500px) rotateX(20deg) translateY(60px); }
+  }
+
+  .hero-glow {
+    position: absolute;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(0,245,255,0.08) 0%, transparent 70%);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    animation: pulse 4s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.6; }
+    50% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+  }
+
+  .hero-content { position: relative; z-index: 2; }
+
+  .hero-eyebrow {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--accent1);
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    margin-bottom: 1.5rem;
+    animation: fadeUp 0.8s ease both;
+  }
+
+  .hero-title {
+    font-size: clamp(2.5rem, 7vw, 6rem);
+    font-weight: 900;
+    line-height: 1.05;
+    margin-bottom: 1.5rem;
+    animation: fadeUp 0.8s ease 0.2s both;
+  }
+
+  .hero-title .line1 { color: var(--text); }
+  .hero-title .line2 {
+    background: linear-gradient(90deg, var(--accent1), var(--accent3));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero-sub {
+    font-family: var(--mono);
+    color: var(--text-dim);
+    font-size: 1rem;
+    max-width: 500px;
+    margin: 0 auto 3rem;
+    animation: fadeUp 0.8s ease 0.4s both;
+  }
+
+  .hero-sub span { color: var(--accent2); }
+
+  .run-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: transparent;
+    border: 1.5px solid var(--accent1);
+    color: var(--accent1);
+    font-family: var(--mono);
+    font-size: 0.9rem;
+    padding: 0.9rem 2rem;
+    cursor: pointer;
+    letter-spacing: 0.1em;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s;
+    animation: fadeUp 0.8s ease 0.6s both;
+  }
+
+  .run-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--accent1);
+    transform: translateX(-100%);
+    transition: transform 0.3s;
+    z-index: -1;
+  }
+
+  .run-btn:hover { color: var(--bg); }
+  .run-btn:hover::before { transform: translateX(0); }
+
+  .run-btn .icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: spin-pulse 2s ease infinite;
+  }
+
+  .run-btn:hover .icon { background: var(--bg); }
+
+  @keyframes spin-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(0,245,255,0.5); }
+    50% { box-shadow: 0 0 0 8px rgba(0,245,255,0); }
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* PIPELINE FLOW */
+  .pipeline-section {
+    padding: 6rem 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--accent1);
+    letter-spacing: 0.4em;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+    opacity: 0.7;
+  }
+
+  .pipeline-flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    overflow-x: auto;
+    padding: 3rem 0;
+    scrollbar-width: none;
+  }
+
+  .pipeline-flow::-webkit-scrollbar { display: none; }
+
+  .pipe-node {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    transition: transform 0.3s;
+  }
+
+  .pipe-node:hover { transform: translateY(-5px); }
+
+  .pipe-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    position: relative;
+    border: 1.5px solid;
+  }
+
+  .pipe-icon::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 15px;
+    border: 1px solid;
+    opacity: 0.3;
+    animation: ripple 2s ease infinite;
+  }
+
+  @keyframes ripple {
+    0% { transform: scale(0.9); opacity: 0.5; }
+    100% { transform: scale(1.2); opacity: 0; }
+  }
+
+  .pipe-label {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    opacity: 0.7;
+  }
+
+  .pipe-arrow {
+    flex-shrink: 0;
+    width: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+
+  .pipe-arrow::before {
+    content: '';
+    position: absolute;
+    height: 2px;
+    width: 100%;
+    background: linear-gradient(90deg, transparent, var(--accent1), transparent);
+    animation: flowRight 1.5s linear infinite;
+  }
+
+  @keyframes flowRight {
+    0% { opacity: 0.2; background-position: -60px; }
+    50% { opacity: 1; }
+    100% { opacity: 0.2; background-position: 60px; }
+  }
+
+  .pipe-arrow svg { position: relative; z-index: 1; }
+
+  /* STEPS */
+  .steps-container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 2rem 2rem 6rem;
+  }
+
+  .step-card {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4rem;
+    align-items: center;
+    padding: 5rem 0;
+    border-bottom: 1px solid var(--border);
+    opacity: 0;
+    transform: translateY(40px);
+    transition: all 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .step-card.visible { opacity: 1; transform: translateY(0); }
+
+  .step-card:nth-child(even) .step-visual { order: -1; }
+
+  .step-number {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.3em;
+    color: var(--text-dim);
+    margin-bottom: 1rem;
+  }
+
+  .step-title {
+    font-size: 2.5rem;
+    font-weight: 900;
+    line-height: 1.1;
+    margin-bottom: 1.5rem;
+  }
+
+  .step-desc {
+    color: var(--text-dim);
+    line-height: 1.8;
+    font-size: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .step-output {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    border: 1px solid;
+  }
+
+  .step-visual {
+    position: relative;
+    height: 320px;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1.5px solid var(--border);
+  }
+
+  /* STEP 1 - PREPROCESSING */
+  .preprocess-anim {
+    background: var(--surface);
+    padding: 1.5rem;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .preprocess-anim::before {
+    content: 'preprocessor';
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    font-size: 0.6rem;
+    color: var(--accent5);
+    opacity: 0.5;
+    letter-spacing: 0.1em;
+  }
+
+  .code-line {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    transition: all 0.5s;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .code-line .ln { color: var(--text-dim); min-width: 20px; font-size: 0.65rem; }
+
+  .line-include { color: var(--accent3); }
+  .line-define { color: var(--accent5); }
+  .line-comment { color: #4a5568; font-style: italic; }
+  .line-normal { color: var(--text); }
+
+  .expanding {
+    animation: expandLine 1s ease forwards;
+    background: rgba(168,85,247,0.1);
+    border-left: 2px solid var(--accent3);
+  }
+
+  @keyframes expandLine {
+    0% { max-height: 24px; }
+    50% { max-height: 80px; background: rgba(168,85,247,0.2); }
+    100% { max-height: 24px; background: rgba(168,85,247,0.05); }
+  }
+
+  .replaced {
+    animation: flashReplace 0.8s ease forwards;
+  }
+
+  @keyframes flashReplace {
+    0% { background: rgba(245,158,11,0.3); }
+    100% { background: transparent; }
+  }
+
+  .removed { animation: fadeRemove 0.5s ease forwards; }
+
+  @keyframes fadeRemove {
+    to { opacity: 0; max-height: 0; padding: 0; }
+  }
+
+  /* STEP 2 - COMPILE */
+  .compile-anim {
+    background: var(--surface);
+    height: 100%;
+    display: grid;
+    grid-template-rows: 1fr auto 1fr;
+    overflow: hidden;
+  }
+
+  .compile-top, .compile-bottom {
+    padding: 1.2rem;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    overflow: hidden;
+  }
+
+  .compile-top { border-bottom: 1px solid var(--border); }
+
+  .compile-label {
+    font-size: 0.6rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 0.8rem;
+    opacity: 0.5;
+  }
+
+  .compile-arrow-area {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 0.75rem;
+    background: rgba(0,245,255,0.03);
+    border-top: 1px solid var(--border);
+  }
+
+  .compile-badge {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: 3px;
+    background: rgba(0,245,255,0.1);
+    border: 1px solid rgba(0,245,255,0.3);
+    color: var(--accent1);
+    animation: badgePulse 2s ease infinite;
+  }
+
+  @keyframes badgePulse {
+    0%, 100% { box-shadow: none; }
+    50% { box-shadow: 0 0 12px rgba(0,245,255,0.3); }
+  }
+
+  .asm-line { color: var(--accent2); margin-bottom: 0.3rem; }
+  .asm-line span { color: var(--text-dim); }
+
+  .high-code { color: var(--accent4); margin-bottom: 0.3rem; }
+  .high-code .kw { color: var(--accent3); }
+  .high-code .fn { color: var(--accent1); }
+
+  /* STEP 3 - ASSEMBLY */
+  .assembly-anim {
+    background: var(--surface);
+    height: 100%;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+    font-family: var(--mono);
+    overflow: hidden;
+  }
+
+  .binary-stream {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    justify-content: center;
+  }
+
+  .bit {
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65rem;
+    border-radius: 3px;
+    font-weight: 700;
+    transition: all 0.3s;
+  }
+
+  .bit-1 { background: rgba(0,245,255,0.15); color: var(--accent1); }
+  .bit-0 { background: rgba(255,107,53,0.1); color: var(--accent2); }
+  .bit-new { animation: bitAppear 0.3s ease both; }
+
+  @keyframes bitAppear {
+    from { transform: scale(0) rotate(180deg); opacity: 0; }
+    to { transform: scale(1) rotate(0deg); opacity: 1; }
+  }
+
+  .asm-input {
+    background: rgba(255,107,53,0.05);
+    border: 1px solid rgba(255,107,53,0.2);
+    border-radius: 8px;
+    padding: 1rem;
+    width: 100%;
+    font-size: 0.7rem;
+    color: var(--accent2);
+  }
+
+  .arrow-down {
+    color: var(--accent1);
+    font-size: 1.5rem;
+    animation: arrowBounce 1s ease infinite;
+  }
+
+  @keyframes arrowBounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(5px); }
+  }
+
+  /* STEP 4 - LINKING */
+  .link-anim {
+    background: var(--surface);
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .link-files {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-right: 2rem;
+  }
+
+  .link-file {
+    background: rgba(168,85,247,0.08);
+    border: 1px solid rgba(168,85,247,0.3);
+    border-radius: 8px;
+    padding: 0.6rem 1rem;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--accent3);
+    white-space: nowrap;
+    position: relative;
+    animation: fileFloat 3s ease infinite;
+  }
+
+  .link-file:nth-child(2) { animation-delay: 0.3s; }
+  .link-file:nth-child(3) { animation-delay: 0.6s; }
+
+  @keyframes fileFloat {
+    0%, 100% { transform: translateX(0); }
+    50% { transform: translateX(4px); }
+  }
+
+  .link-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    margin-right: 2rem;
+  }
+
+  .linker-box {
+    background: rgba(0,245,255,0.06);
+    border: 1.5px solid var(--accent1);
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--accent1);
+    text-align: center;
+    animation: linkerGlow 2s ease infinite;
+  }
+
+  @keyframes linkerGlow {
+    0%, 100% { box-shadow: 0 0 0 rgba(0,245,255,0); }
+    50% { box-shadow: 0 0 20px rgba(0,245,255,0.2); }
+  }
+
+  .link-arrows { color: var(--text-dim); font-size: 1.2rem; }
+
+  .link-result {
+    background: rgba(34,197,94,0.08);
+    border: 1.5px solid var(--accent4);
+    border-radius: 10px;
+    padding: 1rem 1.5rem;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--accent4);
+    text-align: center;
+    animation: resultGlow 2s ease infinite;
+  }
+
+  @keyframes resultGlow {
+    0%, 100% { box-shadow: none; transform: scale(1); }
+    50% { box-shadow: 0 0 30px rgba(34,197,94,0.2); transform: scale(1.03); }
+  }
+
+  /* STEP 5 - LOADING */
+  .load-anim {
+    background: var(--surface);
+    height: 100%;
+    padding: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    overflow: hidden;
+  }
+
+  .memory-layout {
+    width: 110px;
+    display: flex;
+    flex-direction: column;
+    height: 240px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .mem-section {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .mem-section::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    animation: memFill 4s linear infinite;
+  }
+
+  .mem-stack { background: rgba(168,85,247,0.1); color: var(--accent3); }
+  .mem-heap { background: rgba(0,245,255,0.08); color: var(--accent1); }
+  .mem-code { background: rgba(34,197,94,0.08); color: var(--accent4); }
+  .mem-data { background: rgba(245,158,11,0.08); color: var(--accent5); }
+
+  .mem-section::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .mem-fill-anim {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: currentColor;
+    opacity: 0.15;
+    animation: fillUp 3s ease-in-out infinite;
+  }
+
+  .mem-stack .mem-fill-anim { animation-delay: 0s; }
+  .mem-heap .mem-fill-anim { animation-delay: 0.5s; }
+  .mem-code .mem-fill-anim { animation-delay: 1s; }
+  .mem-data .mem-fill-anim { animation-delay: 1.5s; }
+
+  @keyframes fillUp {
+    0% { height: 0%; opacity: 0; }
+    50% { height: 80%; opacity: 0.2; }
+    100% { height: 0%; opacity: 0; }
+  }
+
+  .load-right {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+  }
+
+  .load-step {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    opacity: 0.4;
+    transition: opacity 0.3s;
+    animation: loadStepOn 4s ease infinite;
+  }
+
+  .load-step:nth-child(1) { animation-delay: 0s; }
+  .load-step:nth-child(2) { animation-delay: 0.8s; }
+  .load-step:nth-child(3) { animation-delay: 1.6s; }
+  .load-step:nth-child(4) { animation-delay: 2.4s; }
+
+  @keyframes loadStepOn {
+    0%, 80%, 100% { opacity: 0.3; }
+    20%, 60% { opacity: 1; }
+  }
+
+  .load-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+
+  /* STEP 6 - EXECUTION */
+  .exec-anim {
+    background: var(--surface);
+    height: 100%;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .cpu-chip {
+    width: 120px;
+    height: 120px;
+    background: linear-gradient(135deg, rgba(255,107,53,0.1), rgba(168,85,247,0.1));
+    border: 2px solid rgba(255,107,53,0.4);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    animation: chipRun 1s ease infinite;
+  }
+
+  @keyframes chipRun {
+    0%, 100% { box-shadow: 0 0 0 rgba(255,107,53,0); }
+    50% { box-shadow: 0 0 30px rgba(255,107,53,0.3), 0 0 60px rgba(168,85,247,0.1); }
+  }
+
+  .cpu-inner {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--accent2);
+    text-align: center;
+    font-weight: 700;
+  }
+
+  .cpu-pins {
+    position: absolute;
+  }
+
+  .cpu-pins-top { top: -10px; left: 15px; right: 15px; display: flex; justify-content: space-between; }
+  .cpu-pins-bottom { bottom: -10px; left: 15px; right: 15px; display: flex; justify-content: space-between; }
+  .cpu-pins-left { left: -10px; top: 15px; bottom: 15px; flex-direction: column; display: flex; justify-content: space-between; }
+  .cpu-pins-right { right: -10px; top: 15px; bottom: 15px; flex-direction: column; display: flex; justify-content: space-between; }
+
+  .pin {
+    width: 10px;
+    height: 4px;
+    background: var(--text-dim);
+    border-radius: 2px;
+    animation: pinFlash 0.5s ease infinite;
+  }
+
+  .cpu-pins-left .pin, .cpu-pins-right .pin {
+    width: 4px;
+    height: 10px;
+  }
+
+  .pin:nth-child(odd) { animation-delay: 0.1s; }
+  .pin:nth-child(even) { animation-delay: 0.3s; }
+
+  @keyframes pinFlash {
+    0%, 100% { background: var(--text-dim); }
+    50% { background: var(--accent2); box-shadow: 0 0 4px var(--accent2); }
+  }
+
+  .cycle-steps {
+    display: flex;
+    gap: 0.5rem;
+    font-family: var(--mono);
+    font-size: 0.65rem;
+  }
+
+  .cycle-step {
+    padding: 0.4rem 0.7rem;
+    border-radius: 4px;
+    text-align: center;
+    animation: cycleActive 1.5s ease infinite;
+  }
+
+  .cycle-step:nth-child(1) { animation-delay: 0s; background: rgba(0,245,255,0.08); border: 1px solid rgba(0,245,255,0.2); color: var(--accent1); }
+  .cycle-step:nth-child(2) { animation-delay: 0.5s; background: rgba(168,85,247,0.08); border: 1px solid rgba(168,85,247,0.2); color: var(--accent3); }
+  .cycle-step:nth-child(3) { animation-delay: 1s; background: rgba(255,107,53,0.08); border: 1px solid rgba(255,107,53,0.2); color: var(--accent2); }
+
+  @keyframes cycleActive {
+    0%, 60%, 100% { opacity: 0.4; transform: scale(1); }
+    20%, 40% { opacity: 1; transform: scale(1.05); box-shadow: 0 0 12px currentColor; }
+  }
+
+  .exec-output {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--accent4);
+    background: rgba(34,197,94,0.05);
+    border: 1px solid rgba(34,197,94,0.2);
+    border-radius: 6px;
+    padding: 0.6rem 1.5rem;
+    animation: outputBlink 2s ease infinite;
+  }
+
+  @keyframes outputBlink {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 1; box-shadow: 0 0 15px rgba(34,197,94,0.2); }
+  }
+
+  /* FINAL QUOTE */
+  .finale {
+    padding: 8rem 2rem;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .finale::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, rgba(0,245,255,0.05) 0%, transparent 70%);
+  }
+
+  .finale-quote {
+    font-size: clamp(1.5rem, 4vw, 3rem);
+    font-weight: 900;
+    line-height: 1.4;
+    max-width: 800px;
+    margin: 0 auto 3rem;
+    position: relative;
+  }
+
+  .finale-quote .em { color: var(--accent1); }
+  .finale-quote .em2 { color: var(--accent2); }
+
+  .finale-steps {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    position: relative;
+  }
+
+  .finale-chip {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    padding: 0.5rem 1.2rem;
+    border-radius: 100px;
+    border: 1px solid;
+    letter-spacing: 0.05em;
+    animation: chipFade 1s ease both;
+  }
+
+  .finale-chip:nth-child(1) { border-color: var(--accent5); color: var(--accent5); animation-delay: 0.1s; }
+  .finale-chip:nth-child(2) { border-color: var(--accent3); color: var(--accent3); animation-delay: 0.2s; }
+  .finale-chip:nth-child(3) { border-color: var(--accent1); color: var(--accent1); animation-delay: 0.3s; }
+  .finale-chip:nth-child(4) { border-color: var(--accent2); color: var(--accent2); animation-delay: 0.4s; }
+  .finale-chip:nth-child(5) { border-color: var(--accent4); color: var(--accent4); animation-delay: 0.5s; }
+  .finale-chip:nth-child(6) { border-color: #ec4899; color: #ec4899; animation-delay: 0.6s; }
+
+  @keyframes chipFade {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* RESPONSIVE */
+  @media (max-width: 768px) {
+    .step-card { grid-template-columns: 1fr; gap: 2rem; }
+    .step-card:nth-child(even) .step-visual { order: 0; }
+    .pipeline-flow { padding: 2rem 0; }
+    .step-title { font-size: 2rem; }
+    .link-anim { flex-direction: column; }
+  }
+
+  /* SCROLL ANIMATIONS */
+  .fade-in {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: all 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .fade-in.visible { opacity: 1; transform: translateY(0); }
+
+  /* STEP COLOR THEMES */
+  .s1 { --sc: var(--accent5); }
+  .s2 { --sc: var(--accent3); }
+  .s3 { --sc: var(--accent1); }
+  .s4 { --sc: var(--accent2); }
+  .s5 { --sc: #ec4899; }
+  .s6 { --sc: var(--accent4); }
+
+  .step-title { color: var(--sc, var(--text)); }
+  .step-output { border-color: var(--sc, var(--border)); color: var(--sc, var(--text)); }
+
+  .pipe-icon.s1 { background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.4); }
+  .pipe-icon.s2 { background: rgba(168,85,247,0.1); border-color: rgba(168,85,247,0.4); }
+  .pipe-icon.s3 { background: rgba(0,245,255,0.1); border-color: rgba(0,245,255,0.4); }
+  .pipe-icon.s4 { background: rgba(255,107,53,0.1); border-color: rgba(255,107,53,0.4); }
+  .pipe-icon.s5 { background: rgba(236,72,153,0.1); border-color: rgba(236,72,153,0.4); }
+  .pipe-icon.s6 { background: rgba(34,197,94,0.1); border-color: rgba(34,197,94,0.4); }
+  .pipe-icon.s1::after { border-color: var(--accent5); }
+  .pipe-icon.s2::after { border-color: var(--accent3); }
+  .pipe-icon.s3::after { border-color: var(--accent1); }
+  .pipe-icon.s4::after { border-color: var(--accent2); }
+  .pipe-icon.s5::after { border-color: #ec4899; }
+  .pipe-icon.s6::after { border-color: var(--accent4); }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-grid"></div>
+  <div class="hero-glow"></div>
+  <div class="hero-content">
+    <div class="hero-eyebrow">// system internals</div>
+    <h1 class="hero-title">
+      <div class="line1">What happens when</div>
+      <div class="line2">you click Run?</div>
+    </h1>
+    <p class="hero-sub">Your code doesn't just <span>execute</span>.<br>It gets transformed, stitched, loaded, and executed by the CPU.</p>
+    <button class="run-btn" onclick="scrollToFlow()">
+      <div class="icon">
+        <svg width="8" height="10" viewBox="0 0 8 10" fill="var(--bg)"><polygon points="0,0 8,5 0,10"/></svg>
+      </div>
+      $ ./run —explore
+    </button>
+  </div>
+</section>
+
+<!-- PIPELINE OVERVIEW -->
+<section class="pipeline-section" id="flow">
+  <div class="section-label">// full pipeline</div>
+  <div class="pipeline-flow fade-in">
+
+    <div class="pipe-node" onclick="scrollToStep(0)">
+      <div class="pipe-icon s1">🧾</div>
+      <div class="pipe-label">Preprocess</div>
+    </div>
+
+    <div class="pipe-arrow">
+      <svg width="24" height="12" viewBox="0 0 24 12" fill="none">
+        <path d="M0 6h20M14 1l6 5-6 5" stroke="rgba(0,245,255,0.6)" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </div>
+
+    <div class="pipe-node" onclick="scrollToStep(1)">
+      <div class="pipe-icon s2">⚙️</div>
+      <div class="pipe-label">Compile</div>
+    </div>
+
+    <div class="pipe-arrow">
+      <svg width="24" height="12" viewBox="0 0 24 12" fill="none">
+        <path d="M0 6h20M14 1l6 5-6 5" stroke="rgba(0,245,255,0.6)" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </div>
+
+    <div class="pipe-node" onclick="scrollToStep(2)">
+      <div class="pipe-icon s3">🔩</div>
+      <div class="pipe-label">Assemble</div>
+    </div>
+
+    <div class="pipe-arrow">
+      <svg width="24" height="12" viewBox="0 0 24 12" fill="none">
+        <path d="M0 6h20M14 1l6 5-6 5" stroke="rgba(0,245,255,0.6)" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </div>
+
+    <div class="pipe-node" onclick="scrollToStep(3)">
+      <div class="pipe-icon s4">🔗</div>
+      <div class="pipe-label">Link</div>
+    </div>
+
+    <div class="pipe-arrow">
+      <svg width="24" height="12" viewBox="0 0 24 12" fill="none">
+        <path d="M0 6h20M14 1l6 5-6 5" stroke="rgba(0,245,255,0.6)" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </div>
+
+    <div class="pipe-node" onclick="scrollToStep(4)">
+      <div class="pipe-icon s5">🚀</div>
+      <div class="pipe-label">Load</div>
+    </div>
+
+    <div class="pipe-arrow">
+      <svg width="24" height="12" viewBox="0 0 24 12" fill="none">
+        <path d="M0 6h20M14 1l6 5-6 5" stroke="rgba(0,245,255,0.6)" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </div>
+
+    <div class="pipe-node" onclick="scrollToStep(5)">
+      <div class="pipe-icon s6">🧮</div>
+      <div class="pipe-label">Execute</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- STEPS -->
+<div class="steps-container">
+
+  <!-- STEP 1: PREPROCESS -->
+  <div class="step-card s1" id="step-0">
+    <div class="step-info">
+      <div class="step-number">// STEP 01 — PREPROCESSING</div>
+      <h2 class="step-title">Cleaning the Code</h2>
+      <p class="step-desc">
+        Before anything else, the <strong>preprocessor</strong> runs through your source file.
+        It replaces <code style="color:var(--accent5)">#include</code> with actual file contents,
+        expands <code style="color:var(--accent5)">#define</code> macros,
+        and strips out every comment. What comes out is a clean, expanded version of your code.
+      </p>
+      <div class="step-output">→ output: expanded .c / .cpp file</div>
+    </div>
+    <div class="step-visual">
+      <div class="preprocess-anim" id="preprocess-anim">
+        <div class="code-line" id="inc-line">
+          <span class="ln">1</span>
+          <span class="line-include">#include &lt;stdio.h&gt;</span>
+        </div>
+        <div class="code-line" id="def-line">
+          <span class="ln">2</span>
+          <span class="line-define">#define MAX 100</span>
+        </div>
+        <div class="code-line" id="cmt-line">
+          <span class="ln">3</span>
+          <span class="line-comment">// entry point</span>
+        </div>
+        <div class="code-line">
+          <span class="ln">4</span>
+          <span class="line-normal"><span style="color:var(--accent3)">int</span> <span style="color:var(--accent1)">main</span>() {</span>
+        </div>
+        <div class="code-line">
+          <span class="ln">5</span>
+          <span class="line-normal">&nbsp;&nbsp;<span style="color:var(--accent1)">printf</span>(<span style="color:var(--accent4)">"Hello"</span>);</span>
+        </div>
+        <div class="code-line" id="max-line">
+          <span class="ln">6</span>
+          <span class="line-normal">&nbsp;&nbsp;<span style="color:var(--accent3)">int</span> x = <span style="color:var(--accent5)">MAX</span>;</span>
+        </div>
+        <div class="code-line">
+          <span class="ln">7</span>
+          <span class="line-normal">}</span>
+        </div>
+        <div class="code-line" id="expanded-line" style="display:none">
+          <span class="ln">→</span>
+          <span style="color:var(--accent3);font-size:0.65rem">/* stdio.h contents: printf, scanf, FILE... */</span>
+        </div>
+        <div class="code-line" id="expanded-max" style="display:none">
+          <span class="ln">→</span>
+          <span class="line-normal">&nbsp;&nbsp;<span style="color:var(--accent3)">int</span> x = <span style="color:var(--accent1)">100</span>; <span style="color:var(--text-dim)">/* MAX expanded */</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 2: COMPILE -->
+  <div class="step-card s2" id="step-1">
+    <div class="step-info">
+      <div class="step-number">// STEP 02 — COMPILATION</div>
+      <h2 class="step-title">Code → Assembly</h2>
+      <p class="step-desc">
+        The <strong>compiler</strong> checks your syntax, builds a parse tree,
+        optimizes the logic, and converts your high-level code into
+        <strong>assembly language</strong> — low-level instructions specific to your CPU architecture.
+      </p>
+      <div class="step-output">→ output: .s (assembly file)</div>
+    </div>
+    <div class="step-visual">
+      <div class="compile-anim">
+        <div class="compile-top">
+          <div class="compile-label">C source</div>
+          <div class="high-code"><span class="kw">int</span> add(<span class="kw">int</span> a, <span class="kw">int</span> b) {</div>
+          <div class="high-code">&nbsp;&nbsp;<span class="kw">return</span> a + b;</div>
+          <div class="high-code">}</div>
+          <div style="margin-top:0.5rem" class="high-code"><span class="fn">printf</span>(<span style="color:var(--accent4)">"%d"</span>, <span class="fn">add</span>(3, 4));</div>
+        </div>
+        <div class="compile-arrow-area">
+          <div class="compile-badge">GCC / Clang</div>
+          <svg width="40" height="12" viewBox="0 0 40 12" fill="none">
+            <path d="M0 6h34M28 1l7 5-7 5" stroke="var(--accent3)" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <div class="compile-badge">x86-64 ASM</div>
+        </div>
+        <div class="compile-top">
+          <div class="compile-label">assembly output</div>
+          <div class="asm-line">add: <span>; function prologue</span></div>
+          <div class="asm-line">&nbsp;&nbsp;push &nbsp;rbp</div>
+          <div class="asm-line">&nbsp;&nbsp;mov &nbsp;&nbsp;eax, edi</div>
+          <div class="asm-line">&nbsp;&nbsp;add &nbsp;&nbsp;eax, esi</div>
+          <div class="asm-line">&nbsp;&nbsp;ret</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 3: ASSEMBLE -->
+  <div class="step-card s3" id="step-2">
+    <div class="step-info">
+      <div class="step-number">// STEP 03 — ASSEMBLY</div>
+      <h2 class="step-title">Assembly → Binary</h2>
+      <p class="step-desc">
+        The <strong>assembler</strong> translates each assembly instruction into
+        raw binary — actual 0s and 1s the CPU can read. The result is an
+        <strong>object file</strong>, but it's not yet runnable. References to
+        external functions are left as unresolved placeholders.
+      </p>
+      <div class="step-output">→ output: .o (object file)</div>
+    </div>
+    <div class="step-visual">
+      <div class="assembly-anim">
+        <div class="asm-input">
+          mov &nbsp;eax, edi<br>
+          add &nbsp;eax, esi<br>
+          ret
+        </div>
+        <div class="arrow-down">↓</div>
+        <div class="binary-stream" id="binary-stream"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 4: LINK -->
+  <div class="step-card s4" id="step-3">
+    <div class="step-info">
+      <div class="step-number">// STEP 04 — LINKING</div>
+      <h2 class="step-title">Combining Everything</h2>
+      <p class="step-desc">
+        The <strong>linker</strong> stitches your object file together with library files
+        (like the one containing <code style="color:var(--accent2)">printf</code>). It resolves all
+        those unresolved references and produces a single, self-contained <strong>executable</strong>.
+      </p>
+      <div class="step-output">→ output: .exe / a.out</div>
+    </div>
+    <div class="step-visual">
+      <div class="link-anim">
+        <div class="link-files">
+          <div class="link-file">📄 main.o</div>
+          <div class="link-file">📄 utils.o</div>
+          <div class="link-file">📚 libc.a</div>
+        </div>
+        <div class="link-center">
+          <div class="link-arrows">→</div>
+          <div class="linker-box">🔗<br>LINKER<br><span style="opacity:0.5;font-size:0.55rem">ld / lld</span></div>
+          <div class="link-arrows">→</div>
+        </div>
+        <div class="link-result">
+          ✅<br>
+          a.out<br>
+          <span style="font-size:0.65rem;opacity:0.7">executable</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 5: LOAD -->
+  <div class="step-card s5" id="step-4">
+    <div class="step-info">
+      <div class="step-number">// STEP 05 — LOADING</div>
+      <h2 class="step-title">OS Takes Over</h2>
+      <p class="step-desc">
+        The <strong>operating system's loader</strong> maps your executable into RAM.
+        It sets up separate memory regions: the <strong>stack</strong> for function calls,
+        the <strong>heap</strong> for dynamic allocations, and the <strong>code segment</strong>
+        for your instructions.
+      </p>
+      <div class="step-output">→ output: process in RAM</div>
+    </div>
+    <div class="step-visual">
+      <div class="load-anim">
+        <div class="memory-layout">
+          <div class="mem-section mem-stack">
+            <div class="mem-fill-anim"></div>
+            Stack
+          </div>
+          <div class="mem-section mem-heap">
+            <div class="mem-fill-anim"></div>
+            Heap
+          </div>
+          <div class="mem-section mem-code">
+            <div class="mem-fill-anim"></div>
+            Code
+          </div>
+          <div class="mem-section mem-data">
+            <div class="mem-fill-anim"></div>
+            Data
+          </div>
+        </div>
+        <div class="load-right">
+          <div class="load-step" style="color:var(--accent3)">
+            <div class="load-dot"></div>
+            Allocate virtual memory
+          </div>
+          <div class="load-step" style="color:var(--accent1)">
+            <div class="load-dot"></div>
+            Map code segment
+          </div>
+          <div class="load-step" style="color:#ec4899">
+            <div class="load-dot"></div>
+            Init stack pointer
+          </div>
+          <div class="load-step" style="color:var(--accent4)">
+            <div class="load-dot"></div>
+            Jump to main()
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 6: EXECUTE -->
+  <div class="step-card s6" id="step-5">
+    <div class="step-info">
+      <div class="step-number">// STEP 06 — EXECUTION</div>
+      <h2 class="step-title">CPU Runs It</h2>
+      <p class="step-desc">
+        Finally, the CPU enters its infinite <strong>fetch-decode-execute cycle</strong>.
+        It fetches the next instruction from the program counter,
+        decodes what operation to perform,
+        executes it — then repeats billions of times per second
+        until your program finishes.
+      </p>
+      <div class="step-output">→ output: your program runs 🎉</div>
+    </div>
+    <div class="step-visual">
+      <div class="exec-anim">
+        <div class="cpu-chip">
+          <div class="cpu-pins cpu-pins-top">
+            <div class="pin"></div><div class="pin"></div><div class="pin"></div>
+            <div class="pin"></div><div class="pin"></div>
+          </div>
+          <div class="cpu-pins cpu-pins-bottom">
+            <div class="pin"></div><div class="pin"></div><div class="pin"></div>
+            <div class="pin"></div><div class="pin"></div>
+          </div>
+          <div class="cpu-pins cpu-pins-left">
+            <div class="pin"></div><div class="pin"></div><div class="pin"></div>
+          </div>
+          <div class="cpu-pins cpu-pins-right">
+            <div class="pin"></div><div class="pin"></div><div class="pin"></div>
+          </div>
+          <div class="cpu-inner">
+            CPU<br>
+            <span style="font-size:0.5rem;opacity:0.6">x86-64</span>
+          </div>
+        </div>
+        <div class="cycle-steps">
+          <div class="cycle-step">FETCH</div>
+          <div class="cycle-step">DECODE</div>
+          <div class="cycle-step">EXECUTE</div>
+        </div>
+        <div class="exec-output">$ Hello, World! ✓</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- FINALE -->
+<section class="finale">
+  <div class="finale-quote">
+    Your code doesn't just <em class="em">run</em>…<br>
+    it gets <em class="em2">transformed, stitched,<br>loaded, and executed</em> by the CPU.
+  </div>
+  <div class="finale-steps">
+    <span class="finale-chip">Preprocess</span>
+    <span class="finale-chip">Compile</span>
+    <span class="finale-chip">Assemble</span>
+    <span class="finale-chip">Link</span>
+    <span class="finale-chip">Load</span>
+    <span class="finale-chip">Execute</span>
+  </div>
+</section>
+
+<script>
+  // SCROLL UTILS
+  function scrollToFlow() {
+    document.getElementById('flow').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function scrollToStep(i) {
+    document.getElementById('step-' + i).scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  // INTERSECTION OBSERVER — step cards & fade-ins
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.15 });
+
+  document.querySelectorAll('.step-card, .fade-in').forEach(el => io.observe(el));
+
+  // BINARY STREAM ANIMATION
+  const stream = document.getElementById('binary-stream');
+  const bits = '10110001111010010110100011100101101101011001011010001110010'.split('');
+  let bi = 0;
+
+  function addBit() {
+    if (stream.children.length >= 42) {
+      stream.innerHTML = '';
+      bi = 0;
+    }
+    const b = bits[bi % bits.length];
+    const el = document.createElement('div');
+    el.className = `bit bit-${b} bit-new`;
+    el.textContent = b;
+    stream.appendChild(el);
+    bi++;
+    setTimeout(() => el.classList.remove('bit-new'), 300);
+    setTimeout(addBit, 120);
+  }
+
+  setTimeout(addBit, 1000);
+
+  // PREPROCESS ANIMATION
+  let ppRunning = false;
+
+  function runPreprocessAnim() {
+    if (ppRunning) return;
+    ppRunning = true;
+
+    const incLine = document.getElementById('inc-line');
+    const defLine = document.getElementById('def-line');
+    const cmtLine = document.getElementById('cmt-line');
+    const maxLine = document.getElementById('max-line');
+    const expandedLine = document.getElementById('expanded-line');
+    const expandedMax = document.getElementById('expanded-max');
+
+    // Step 1: expand include
+    setTimeout(() => {
+      incLine.classList.add('expanding');
+      expandedLine.style.display = 'flex';
+      expandedLine.classList.add('expanding');
+    }, 300);
+
+    // Step 2: replace define usage
+    setTimeout(() => {
+      incLine.classList.remove('expanding');
+      defLine.classList.add('removed');
+      maxLine.querySelector('.line-normal').innerHTML =
+        `&nbsp;&nbsp;<span style="color:var(--accent3)">int</span> x = <span style="color:var(--accent1)">100</span>;`;
+      maxLine.classList.add('replaced');
+      expandedMax.style.display = 'flex';
+      expandedMax.classList.add('expanding');
+    }, 1500);
+
+    // Step 3: remove comment
+    setTimeout(() => {
+      cmtLine.classList.add('removed');
+    }, 2800);
+
+    // Reset
+    setTimeout(() => {
+      incLine.classList.remove('expanding');
+      defLine.classList.remove('removed');
+      defLine.style.opacity = '';
+      cmtLine.classList.remove('removed');
+      cmtLine.style.opacity = '';
+      expandedLine.style.display = 'none';
+      expandedMax.style.display = 'none';
+      maxLine.querySelector('.line-normal').innerHTML =
+        `&nbsp;&nbsp;<span style="color:var(--accent3)">int</span> x = <span style="color:var(--accent5)">MAX</span>;`;
+      maxLine.classList.remove('replaced');
+      ppRunning = false;
+    }, 5000);
+  }
+
+  // Trigger preprocess anim on scroll
+  const ppObserver = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) runPreprocessAnim();
+    });
+  }, { threshold: 0.4 });
+
+  ppObserver.observe(document.getElementById('step-0'));
+
+  // Repeat preprocess anim every 6s when visible
+  setInterval(() => {
+    const el = document.getElementById('step-0');
+    const rect = el.getBoundingClientRect();
+    if (rect.top < window.innerHeight && rect.bottom > 0) {
+      runPreprocessAnim();
+    }
+  }, 6000);
+</script>
+</body>
+</html>

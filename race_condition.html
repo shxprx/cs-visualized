@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Race Condition</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;600;700&family=Manrope:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+
+:root {
+  --bg: #08070f;
+  --A: #ff3b5c;
+  --B: #3b8fff;
+  --ok: #00e676;
+  --warn: #ffb300;
+  --text: #f0eef8;
+  --dim: #4a4860;
+  --surface: #110f1e;
+  --border: #1e1b30;
+  --mono: 'IBM Plex Mono', monospace;
+  --display: 'Bebas Neue', sans-serif;
+  --body: 'Manrope', sans-serif;
+}
+
+html, body {
+  width:100%; height:100%;
+  overflow:hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--body);
+  user-select: none;
+}
+
+/* ── NOISE OVERLAY ── */
+body::after {
+  content:'';
+  position:fixed; inset:0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events:none; z-index:9998;
+}
+
+/* ══════════════════════════════════
+   STAGE — the whole animation lives here
+══════════════════════════════════ */
+#stage {
+  width:100vw; height:100vh;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  position:relative; overflow:hidden;
+  gap:0;
+}
+
+/* ambient vignette */
+#stage::before {
+  content:'';
+  position:absolute; inset:0;
+  background: radial-gradient(ellipse 80% 70% at 50% 50%, transparent 40%, rgba(8,7,15,0.85) 100%);
+  pointer-events:none; z-index:0;
+}
+
+/* ── TITLE BAR ── */
+#title-bar {
+  position:absolute; top:0; left:0; right:0;
+  padding: 1.4rem 2.5rem;
+  display:flex; align-items:center; justify-content:space-between;
+  z-index:10;
+  border-bottom: 1px solid var(--border);
+  background: rgba(8,7,15,0.6);
+  backdrop-filter: blur(10px);
+}
+
+.title-left {
+  display:flex; align-items:center; gap:1rem;
+}
+
+.title-tag {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  color: var(--A);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.main-title {
+  font-family: var(--display);
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  letter-spacing: 0.05em;
+  background: linear-gradient(90deg, var(--A), #ff9066);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+#phase-label {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--warn);
+  letter-spacing: 0.15em;
+  opacity: 0.8;
+  transition: all 0.4s;
+  text-transform: uppercase;
+}
+
+/* ── SCENE ── */
+#scene {
+  position:relative; z-index:2;
+  width: min(960px, 96vw);
+  display:flex; flex-direction:column;
+  align-items:center;
+  gap: 0;
+  padding-top: 80px;
+}
+
+/* ── SHARED VARIABLE DISPLAY ── */
+#var-box {
+  position:relative;
+  display:flex; flex-direction:column;
+  align-items:center; gap:0.4rem;
+  z-index:5;
+}
+
+.var-label {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  color: var(--dim);
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+}
+
+.var-display {
+  width: 120px; height: 80px;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  display:flex; align-items:center; justify-content:center;
+  position:relative;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.var-display.conflict {
+  border-color: var(--A);
+  box-shadow: 0 0 30px rgba(255,59,92,0.4), 0 0 60px rgba(255,59,92,0.15);
+  animation: shake 0.4s ease;
+}
+
+.var-display.correct {
+  border-color: var(--ok);
+  box-shadow: 0 0 30px rgba(0,230,118,0.4);
+}
+
+@keyframes shake {
+  0%,100%{transform:translateX(0)}
+  20%{transform:translateX(-6px)}
+  40%{transform:translateX(6px)}
+  60%{transform:translateX(-4px)}
+  80%{transform:translateX(4px)}
+}
+
+#count-val {
+  font-family: var(--display);
+  font-size: 3rem;
+  letter-spacing: 0.05em;
+  transition: color 0.3s, transform 0.2s;
+}
+
+.count-flash {
+  animation: numPop 0.3s ease;
+}
+
+@keyframes numPop {
+  0%{transform:scale(1.5);opacity:0.5}
+  100%{transform:scale(1);opacity:1}
+}
+
+/* ── TRACK ── */
+#track-area {
+  width:100%;
+  position:relative;
+  height: 280px;
+  display:flex; flex-direction:column;
+  justify-content:space-around;
+  padding: 0 2rem;
+}
+
+.thread-lane {
+  display:flex;
+  align-items:center;
+  gap:0;
+  position:relative;
+  height: 80px;
+}
+
+.thread-id {
+  font-family: var(--mono);
+  font-size:0.65rem;
+  letter-spacing:0.15em;
+  width: 90px;
+  flex-shrink:0;
+  font-weight:700;
+}
+
+.thread-id.A { color: var(--A); }
+.thread-id.B { color: var(--B); }
+
+/* Steps bar */
+.steps-bar {
+  flex:1;
+  display:flex;
+  gap: 4px;
+  align-items:center;
+  position:relative;
+}
+
+.step-box {
+  flex:1;
+  height: 48px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  display:flex; align-items:center; justify-content:center;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing:0.08em;
+  position:relative;
+  transition: all 0.3s;
+}
+
+.step-box.active-A {
+  background: rgba(255,59,92,0.12);
+  border-color: var(--A);
+  color: var(--A);
+  box-shadow: 0 0 12px rgba(255,59,92,0.3);
+}
+
+.step-box.active-B {
+  background: rgba(59,143,255,0.12);
+  border-color: var(--B);
+  color: var(--B);
+  box-shadow: 0 0 12px rgba(59,143,255,0.3);
+}
+
+.step-box.done-ok {
+  background: rgba(0,230,118,0.08);
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+/* ── THREAD SPRITE ── */
+.thread-sprite {
+  position:absolute;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:0.7rem;
+  font-family: var(--mono);
+  font-weight:700;
+  top: 50%; transform: translateY(-50%);
+  transition: left 0.5s cubic-bezier(0.34,1.56,0.64,1);
+  z-index:10;
+  pointer-events:none;
+}
+
+.sprite-A {
+  background: var(--A);
+  color: #fff;
+  box-shadow: 0 0 16px rgba(255,59,92,0.6);
+}
+
+.sprite-B {
+  background: var(--B);
+  color: #fff;
+  box-shadow: 0 0 16px rgba(59,143,255,0.6);
+}
+
+/* ── REGISTER PEEK ── */
+#reg-area {
+  display:flex; gap:2rem;
+  align-items:center;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+}
+
+.reg-card {
+  display:flex; flex-direction:column;
+  align-items:center; gap:0.3rem;
+}
+
+.reg-name {
+  font-size:0.58rem;
+  letter-spacing:0.2em;
+  text-transform:uppercase;
+  opacity:0.5;
+}
+
+.reg-val {
+  padding: 0.3rem 1rem;
+  border-radius:5px;
+  border:1px solid var(--border);
+  background: var(--surface);
+  font-size:0.85rem;
+  font-weight:600;
+  transition: all 0.3s;
+  min-width:60px;
+  text-align:center;
+}
+
+.reg-A { border-color:rgba(255,59,92,0.3); color:var(--A); }
+.reg-B { border-color:rgba(59,143,255,0.3); color:var(--B); }
+
+.reg-val.loading {
+  animation: regLoad 0.3s ease;
+}
+
+@keyframes regLoad {
+  0%{transform:scale(1.2);opacity:0.5}
+  100%{transform:scale(1);opacity:1}
+}
+
+/* ── LOG ── */
+#log {
+  width:100%;
+  height: 72px;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--border);
+  border-radius:10px;
+  padding:0.6rem 1rem;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  overflow:hidden;
+  display:flex; flex-direction:column; justify-content:flex-end;
+  gap:0.2rem;
+  margin-top:0.5rem;
+}
+
+.log-line {
+  display:flex; gap:0.5rem;
+  opacity:0;
+  transform: translateY(8px);
+  animation: logIn 0.3s ease forwards;
+}
+
+@keyframes logIn {
+  to { opacity:1; transform:translateY(0); }
+}
+
+.log-ts { color: var(--dim); }
+.log-A { color: var(--A); }
+.log-B { color: var(--B); }
+.log-sys { color: var(--warn); }
+.log-ok { color: var(--ok); }
+.log-err { color: var(--A); font-weight:700; }
+
+/* ── BOTTOM BAR ── */
+#bottom-bar {
+  position:absolute; bottom:0; left:0; right:0;
+  padding: 1rem 2.5rem;
+  display:flex; align-items:center; justify-content:space-between;
+  border-top: 1px solid var(--border);
+  background: rgba(8,7,15,0.6);
+  backdrop-filter: blur(10px);
+  z-index:10;
+}
+
+#status-msg {
+  font-size: 0.8rem;
+  color: var(--dim);
+  font-family: var(--mono);
+  transition: color 0.3s;
+  max-width: 60%;
+}
+
+#replay-btn {
+  font-family: var(--mono);
+  font-size:0.72rem;
+  letter-spacing:0.1em;
+  padding: 0.5rem 1.4rem;
+  border:1px solid var(--border);
+  background:transparent;
+  color: var(--dim);
+  border-radius:6px;
+  cursor:pointer;
+  transition: all 0.3s;
+  text-transform: uppercase;
+}
+
+#replay-btn:hover {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+/* ── OVERLAY — BIG MOMENT ── */
+#big-overlay {
+  position:fixed; inset:0;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  background: rgba(8,7,15,0.92);
+  z-index:100;
+  opacity:0;
+  pointer-events:none;
+  transition: opacity 0.4s;
+  gap:1rem;
+  backdrop-filter: blur(4px);
+}
+
+#big-overlay.show {
+  opacity:1; pointer-events:all;
+}
+
+.overlay-icon { font-size:4rem; animation: iconBounce 0.5s ease; }
+@keyframes iconBounce {
+  0%{transform:scale(0.3) rotate(-20deg)}
+  60%{transform:scale(1.2) rotate(5deg)}
+  100%{transform:scale(1) rotate(0)}
+}
+
+.overlay-title {
+  font-family: var(--display);
+  font-size: clamp(2.5rem, 6vw, 5rem);
+  letter-spacing:0.08em;
+  text-align:center;
+}
+
+.overlay-sub {
+  font-family: var(--mono);
+  font-size:0.85rem;
+  color: var(--dim);
+  text-align:center;
+  max-width:500px;
+  line-height:1.7;
+}
+
+.overlay-code {
+  font-family: var(--mono);
+  font-size:0.8rem;
+  background: var(--surface);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:1rem 2rem;
+  color: var(--text);
+  text-align:center;
+  line-height:1.8;
+}
+
+.overlay-code .kw { color: var(--warn); }
+.overlay-code .fn { color: var(--ok); }
+.overlay-code .cm { color: var(--dim); }
+
+.overlay-continue {
+  font-family: var(--mono);
+  font-size:0.7rem;
+  color: var(--dim);
+  letter-spacing:0.2em;
+  text-transform:uppercase;
+  animation: blink 1.2s ease infinite;
+  cursor:pointer;
+  padding:0.5rem 1rem;
+}
+
+@keyframes blink {
+  0%,100%{opacity:0.4} 50%{opacity:1}
+}
+
+/* ── LOCK ICON ── */
+#lock-anim {
+  position:absolute;
+  left:50%; top:50%;
+  transform: translate(-50%, -50%) scale(0);
+  font-size:2.5rem;
+  z-index:20;
+  transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1);
+  filter: drop-shadow(0 0 20px rgba(0,230,118,0.8));
+}
+
+#lock-anim.show { transform: translate(-50%, -50%) scale(1); }
+
+/* ── COLLISION SPARKS ── */
+.spark {
+  position:absolute;
+  width:6px; height:6px;
+  border-radius:50%;
+  background: var(--A);
+  pointer-events:none;
+  animation: sparkFly 0.6s ease-out forwards;
+}
+
+@keyframes sparkFly {
+  0%{transform:scale(1);opacity:1}
+  100%{transform:translate(var(--tx),var(--ty)) scale(0);opacity:0}
+}
+
+/* ── PROGRESS DOTS ── */
+#progress-dots {
+  display:flex; gap:0.4rem;
+  align-items:center;
+}
+
+.pdot {
+  width:6px; height:6px;
+  border-radius:50%;
+  background: var(--border);
+  transition: all 0.3s;
+}
+
+.pdot.done { background: var(--warn); }
+.pdot.active { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+
+/* ── MUTEX VISUAL ── */
+#mutex-lane {
+  display:none;
+  width:100%;
+  align-items:center;
+  gap:1rem;
+  padding: 0 2rem;
+  height:60px;
+}
+
+#mutex-lane.show { display:flex; }
+
+.mutex-box {
+  flex:1;
+  height:48px;
+  border-radius:8px;
+  border:1.5px solid rgba(0,230,118,0.4);
+  background:rgba(0,230,118,0.06);
+  display:flex; align-items:center; justify-content:center;
+  font-family: var(--mono);
+  font-size:0.65rem;
+  color: var(--ok);
+  letter-spacing:0.1em;
+  gap:0.4rem;
+}
+
+.mutex-waiting {
+  flex:1; height:48px;
+  border-radius:8px;
+  border:1.5px dashed rgba(59,143,255,0.4);
+  background:rgba(59,143,255,0.04);
+  display:flex; align-items:center; justify-content:center;
+  font-family: var(--mono);
+  font-size:0.6rem;
+  color: var(--B);
+  letter-spacing:0.08em;
+  gap:0.3rem;
+  animation: waitPulse 1s ease infinite;
+}
+
+@keyframes waitPulse {
+  0%,100%{opacity:0.6} 50%{opacity:1}
+}
+</style>
+</head>
+<body>
+
+<!-- TITLE BAR -->
+<div id="title-bar">
+  <div class="title-left">
+    <div>
+      <div class="title-tag">// concurrency bug</div>
+      <div class="main-title">Race Condition</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:1.5rem">
+    <div id="progress-dots">
+      <div class="pdot active" id="pd0"></div>
+      <div class="pdot" id="pd1"></div>
+      <div class="pdot" id="pd2"></div>
+    </div>
+    <div id="phase-label">ACT I — THE BUG</div>
+  </div>
+</div>
+
+<!-- STAGE -->
+<div id="stage">
+  <div id="scene">
+
+    <!-- SHARED VAR -->
+    <div id="var-box" style="margin-bottom:1rem">
+      <div class="var-label">shared memory</div>
+      <div class="var-display" id="var-display">
+        <div id="count-val">0</div>
+      </div>
+      <div class="var-label" style="margin-top:0.3rem;font-family:var(--mono);font-size:0.7rem;color:var(--dim)">int count = <span id="count-echo" style="color:var(--text)">0</span>;</div>
+    </div>
+
+    <!-- LOCK ICON -->
+    <div id="lock-anim">🔒</div>
+
+    <!-- TRACK -->
+    <div id="track-area">
+
+      <div class="thread-lane" id="lane-A">
+        <div class="thread-id A">Thread A</div>
+        <div class="steps-bar" id="steps-A">
+          <div class="step-box" id="sA0">READ</div>
+          <div class="step-box" id="sA1">+1</div>
+          <div class="step-box" id="sA2">WRITE</div>
+        </div>
+        <div class="thread-sprite sprite-A" id="sprite-A" style="left:90px">A</div>
+      </div>
+
+      <div id="mutex-lane">
+        <div class="mutex-box">🔒 MUTEX LOCKED — Thread A running</div>
+        <div class="mutex-waiting">⏳ Thread B waiting...</div>
+      </div>
+
+      <!-- REG AREA between lanes -->
+      <div id="reg-area" style="justify-content:center;margin:-0.5rem 0">
+        <div class="reg-card">
+          <div class="reg-name">reg_A</div>
+          <div class="reg-val reg-A" id="reg-A">—</div>
+        </div>
+        <div style="font-family:var(--mono);font-size:0.7rem;color:var(--dim);margin:0 0.5rem">←→</div>
+        <div class="reg-card">
+          <div class="reg-name">reg_B</div>
+          <div class="reg-val reg-B" id="reg-B">—</div>
+        </div>
+      </div>
+
+      <div class="thread-lane" id="lane-B">
+        <div class="thread-id B">Thread B</div>
+        <div class="steps-bar" id="steps-B">
+          <div class="step-box" id="sB0">READ</div>
+          <div class="step-box" id="sB1">+1</div>
+          <div class="step-box" id="sB2">WRITE</div>
+        </div>
+        <div class="thread-sprite sprite-B" id="sprite-B" style="left:90px">B</div>
+      </div>
+
+    </div>
+
+    <!-- LOG -->
+    <div id="log"></div>
+
+  </div>
+</div>
+
+<!-- BOTTOM BAR -->
+<div id="bottom-bar">
+  <div id="status-msg">Initializing threads...</div>
+  <div style="display:flex;gap:1rem;align-items:center">
+    <button id="replay-btn" onclick="startAnimation()">↺ Replay</button>
+  </div>
+</div>
+
+<!-- OVERLAYS -->
+<div id="big-overlay" onclick="hideOverlay()">
+  <div class="overlay-icon" id="ov-icon">💀</div>
+  <div class="overlay-title" id="ov-title" style="color:var(--A)">DATA RACE!</div>
+  <div class="overlay-sub" id="ov-sub">Both threads read count = 0 simultaneously.<br>Both computed 0+1 = 1. Both wrote 1.<br><strong style="color:var(--A)">Expected: 2 &nbsp;|&nbsp; Got: 1 ❌</strong></div>
+  <div class="overlay-code" id="ov-code">
+    <span class="cm">// count++ expands to THREE steps:</span><br>
+    <span class="kw">reg</span> = count &nbsp;&nbsp;&nbsp;&nbsp;<span class="cm">// 1. READ</span><br>
+    <span class="kw">reg</span> = reg + 1 &nbsp;<span class="cm">// 2. ADD</span><br>
+    count = <span class="kw">reg</span> &nbsp;&nbsp;<span class="cm">// 3. WRITE</span>
+  </div>
+  <div class="overlay-continue" id="ov-continue">[ tap to continue ]</div>
+</div>
+
+<script>
+// ── STATE ──
+let phase = 0; // 0=bug, 1=explain, 2=fix
+let running = false;
+let timers = [];
+
+function delay(ms){ return new Promise(r=>{ timers.push(setTimeout(r,ms)); }); }
+
+function clearAll(){
+  timers.forEach(clearTimeout); timers=[];
+}
+
+// ── DOM HELPERS ──
+const $ = id => document.getElementById(id);
+
+function setCount(n, conflict=false, correct=false){
+  const d = $('var-display');
+  const v = $('count-val');
+  const e = $('count-echo');
+  v.textContent = n;
+  e.textContent = n;
+  v.classList.add('count-flash');
+  setTimeout(()=>v.classList.remove('count-flash'),300);
+  d.className = 'var-display';
+  if(conflict) { d.classList.add('conflict'); v.style.color='var(--A)'; spawnSparks(); }
+  else if(correct) { d.classList.add('correct'); v.style.color='var(--ok)'; }
+  else { v.style.color='var(--text)'; }
+}
+
+function setReg(who, val){
+  const el = $(`reg-${who}`);
+  el.textContent = val;
+  el.classList.add('loading');
+  setTimeout(()=>el.classList.remove('loading'),300);
+}
+
+function clearRegs(){
+  $('reg-A').textContent='—'; $('reg-B').textContent='—';
+}
+
+function setStep(thread, step, state){ // state: null, 'A', 'B', 'ok'
+  const el = $(`s${thread}${step}`);
+  el.className = 'step-box';
+  if(state==='A') el.classList.add('active-A');
+  else if(state==='B') el.classList.add('active-B');
+  else if(state==='ok') el.classList.add('done-ok');
+}
+
+function clearSteps(){
+  ['A','B'].forEach(t=>[0,1,2].forEach(s=>setStep(t,s,null)));
+}
+
+function moveSprite(who, stepIdx){
+  const sprite = $(`sprite-${who}`);
+  const laneId = who==='A' ? 'lane-A' : 'lane-B';
+  const lane = $(laneId);
+  const bar = $(`steps-${who}`);
+  const barLeft = bar.getBoundingClientRect().left - lane.getBoundingClientRect().left;
+  const barWidth = bar.getBoundingClientRect().width;
+  const stepW = barWidth / 3;
+  const positions = [-30, barLeft + stepW*0.5 - 16, barLeft + stepW*1.5 - 16, barLeft + stepW*2.5 - 16];
+  sprite.style.left = (stepIdx === -1 ? 90 : barLeft + stepIdx * stepW + stepW/2 - 16) + 'px';
+}
+
+function log(msg, cls='log-sys'){
+  const el = $('log');
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  const ts = document.createElement('span');
+  ts.className='log-ts';
+  ts.textContent = new Date().toISOString().substr(11,8) + ' ';
+  const m = document.createElement('span');
+  m.className = cls;
+  m.textContent = msg;
+  line.appendChild(ts); line.appendChild(m);
+  el.appendChild(line);
+  if(el.children.length>4) el.removeChild(el.children[0]);
+}
+
+function setStatus(msg, color='var(--dim)'){
+  const s = $('status-msg');
+  s.textContent = msg;
+  s.style.color = color;
+}
+
+function setPhaseLabel(txt, color='var(--warn)'){
+  const p = $('phase-label');
+  p.textContent = txt;
+  p.style.color = color;
+}
+
+function showDot(i){
+  for(let k=0;k<3;k++){
+    const d = $(`pd${k}`);
+    d.className = 'pdot';
+    if(k<i) d.classList.add('done');
+    else if(k===i) d.classList.add('active');
+  }
+}
+
+function spawnSparks(){
+  const box = $('var-display').getBoundingClientRect();
+  for(let i=0;i<12;i++){
+    const s = document.createElement('div');
+    s.className='spark';
+    const ang = Math.random()*Math.PI*2;
+    const dist = 30+Math.random()*50;
+    s.style.setProperty('--tx', Math.cos(ang)*dist+'px');
+    s.style.setProperty('--ty', Math.sin(ang)*dist+'px');
+    s.style.left = (box.left+box.width/2) + 'px';
+    s.style.top = (box.top+box.height/2) + 'px';
+    s.style.position='fixed';
+    s.style.background = Math.random()>0.5 ? 'var(--A)' : 'var(--warn)';
+    document.body.appendChild(s);
+    setTimeout(()=>s.remove(),700);
+  }
+}
+
+function showOverlay(icon, title, titleColor, sub, code, continueTxt='[ tap to continue ]'){
+  $('ov-icon').textContent = icon;
+  $('ov-title').textContent = title;
+  $('ov-title').style.color = titleColor;
+  $('ov-sub').innerHTML = sub;
+  $('ov-code').innerHTML = code;
+  $('ov-continue').textContent = continueTxt;
+  $('big-overlay').classList.add('show');
+}
+
+let overlayResolve = null;
+function hideOverlay(){
+  $('big-overlay').classList.remove('show');
+  if(overlayResolve){ overlayResolve(); overlayResolve=null; }
+}
+
+function waitForOverlayClose(){
+  return new Promise(r=>{ overlayResolve=r; });
+}
+
+// ── RESET ──
+function reset(){
+  clearAll();
+  running=false;
+  clearSteps();
+  clearRegs();
+  setCount(0);
+  $('var-display').className='var-display';
+  $('count-val').style.color='var(--text)';
+  $('log').innerHTML='';
+  $('mutex-lane').classList.remove('show');
+  $('lock-anim').classList.remove('show');
+  $('big-overlay').classList.remove('show');
+  ['A','B'].forEach(t=>moveSprite(t,-1));
+  setStatus('Ready.','var(--dim)');
+  setPhaseLabel('ACT I — THE BUG','var(--warn)');
+  showDot(0);
+}
+
+// ══════════════════════════════════
+//  ANIMATION SEQUENCE
+// ══════════════════════════════════
+async function startAnimation(){
+  if(running) return;
+  reset();
+  await delay(200);
+  running=true;
+
+  /* ── PHASE 0 : SETUP ── */
+  log('System: Spawning Thread A and Thread B','log-sys');
+  setStatus('Two threads. One shared variable: count = 0','var(--text)');
+  await delay(1200);
+
+  /* ── PHASE 1 : BUG ── */
+  await bugPhase();
+
+  if(!running) return;
+  /* ── OVERLAY 1 ── */
+  showOverlay(
+    '💀','DATA RACE!','var(--A)',
+    'Both threads read <strong style="color:var(--A)">count = 0</strong> at the same time.<br>Both computed <strong>0+1 = 1</strong>. Both wrote back <strong>1</strong>.<br><strong style="color:var(--A)">Expected: 2 &nbsp;|&nbsp; Got: 1 ❌</strong>',
+    `<span class="cm">// count++ is NOT atomic. It expands to 3 ops:</span><br><span class="kw">reg</span> = count<span style="color:var(--dim)">  &nbsp;&nbsp;// READ</span><br><span class="kw">reg</span>++<span style="color:var(--dim)">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// ADD</span><br>count = <span class="kw">reg</span><span style="color:var(--dim)">&nbsp; // WRITE</span>`
+  );
+  await waitForOverlayClose();
+
+  if(!running) return;
+  /* ── PHASE 2 : EXPLAIN RANDOMNESS ── */
+  showDot(1);
+  setPhaseLabel('ACT II — WHY IT\'S SCARY','var(--A)');
+  await explainPhase();
+
+  if(!running) return;
+  /* ── OVERLAY 2 ── */
+  showOverlay(
+    '😱','HAPPENS RANDOMLY!','var(--warn)',
+    'The bug appears only when two threads are <strong style="color:var(--warn)">scheduled to interleave</strong> at exactly the wrong moment.<br>Works fine 99% of the time. Fails in production at 3am.',
+    `<span class="cm">// The scheduler decides thread order</span><br><span class="cm">// You cannot predict it.</span><br><span style="color:var(--warn)">Race condition</span> = result depends on <span style="color:var(--A)">timing</span>`,
+    '[ tap — see the fix ]'
+  );
+  await waitForOverlayClose();
+
+  if(!running) return;
+  /* ── PHASE 3 : FIX ── */
+  showDot(2);
+  setPhaseLabel('ACT III — THE FIX','var(--ok)');
+  await fixPhase();
+
+  if(!running) return;
+  showOverlay(
+    '✅','MUTEX WINS!','var(--ok)',
+    'A mutex (lock) guarantees <strong style="color:var(--ok)">mutual exclusion</strong>.<br>Only ONE thread can hold the lock at a time.<br><strong style="color:var(--ok)">Result: 2 ✓ — correct every time</strong>',
+    `<span class="fn">lock</span>();&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cm">// acquire mutex</span><br>count++; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cm">// safe!</span><br><span class="fn">unlock</span>();&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cm">// release mutex</span>`,
+    '[ tap to replay ]'
+  );
+  await waitForOverlayClose();
+
+  running=false;
+  reset();
+  startAnimation();
+}
+
+/* ── BUG PHASE ── */
+async function bugPhase(){
+  // Both threads start
+  log('thread_A: spawned → will do count++','log-A');
+  await delay(400);
+  log('thread_B: spawned → will do count++','log-B');
+  await delay(600);
+
+  setStatus('Both threads start count++...','var(--text)');
+
+  // A reads
+  moveSprite('A', 0);
+  setStep('A',0,'A');
+  await delay(500);
+  setReg('A', '0');
+  log('thread_A: READ count = 0  → reg_A = 0','log-A');
+  setStatus('Thread A reads count = 0 into reg_A','var(--A)');
+
+  // B reads SIMULTANEOUSLY — the evil moment
+  await delay(300);
+  moveSprite('B', 0);
+  setStep('B',0,'B');
+  await delay(200);
+  setReg('B', '0');
+  log('thread_B: READ count = 0  → reg_B = 0  ← SAME VALUE!','log-B');
+  setStatus('Thread B ALSO reads 0! Both have stale data 💀','var(--A)');
+  await delay(800);
+
+  // A computes
+  moveSprite('A', 1);
+  setStep('A',0,null);
+  setStep('A',1,'A');
+  setReg('A','0+1');
+  log('thread_A: reg_A = 0+1 = 1','log-A');
+  await delay(500);
+
+  // B computes
+  moveSprite('B', 1);
+  setStep('B',0,null);
+  setStep('B',1,'B');
+  setReg('B','0+1');
+  log('thread_B: reg_B = 0+1 = 1','log-B');
+  await delay(700);
+
+  // A writes
+  moveSprite('A', 2);
+  setStep('A',1,null);
+  setStep('A',2,'A');
+  log('thread_A: WRITE count = 1','log-A');
+  setCount(1);
+  setStatus('Thread A writes 1 → count = 1','var(--A)');
+  await delay(600);
+
+  // B writes — OVERWRITE!
+  moveSprite('B', 2);
+  setStep('B',1,null);
+  setStep('B',2,'B');
+  log('thread_B: WRITE count = 1  ← OVERWRITES THREAD A!','log-err');
+  setCount(1, true);
+  setStatus('Thread B writes 1 again! count = 1 ← EXPECTED 2 ❌','var(--A)');
+  await delay(1200);
+
+  // Cleanup sprites
+  moveSprite('A',-1); moveSprite('B',-1);
+  clearSteps(); clearRegs();
+}
+
+/* ── EXPLAIN PHASE ── */
+async function explainPhase(){
+  setStatus('Sometimes threads don\'t interleave... and the bug hides.','var(--dim)');
+  setCount(0);
+  await delay(800);
+
+  // "Good run" — no overlap
+  log('SYS: Scheduler gives A full time slice first...','log-sys');
+  await delay(500);
+
+  for(let s=0;s<3;s++){
+    moveSprite('A',s);
+    setStep('A',s,'A');
+    if(s===0){ setReg('A','0'); }
+    if(s===1){ setReg('A','0+1'); }
+    if(s===2){ setCount(1); }
+    await delay(400);
+    setStep('A',s,null);
+  }
+  moveSprite('A',-1); clearRegs();
+  await delay(300);
+
+  for(let s=0;s<3;s++){
+    moveSprite('B',s);
+    setStep('B',s,'B');
+    if(s===0){ setReg('B','1'); }
+    if(s===1){ setReg('B','1+1'); }
+    if(s===2){ setCount(2,false,true); log('Both finish: count = 2 ✓ — but only got lucky!','log-ok'); }
+    await delay(400);
+    setStep('B',s,null);
+  }
+  moveSprite('B',-1); clearRegs();
+
+  setStatus('Worked this time. Won\'t always. That\'s what makes it terrifying.','var(--warn)');
+  await delay(1500);
+}
+
+/* ── FIX PHASE ── */
+async function fixPhase(){
+  setCount(0);
+  $('var-display').className='var-display';
+  $('count-val').style.color='var(--text)';
+  clearSteps(); clearRegs(); $('log').innerHTML='';
+
+  setStatus('Adding a MUTEX — mutual exclusion lock 🔒','var(--ok)');
+  log('SYS: Mutex initialized. Only one thread at a time.','log-sys');
+  await delay(1000);
+
+  // Show mutex lane
+  $('mutex-lane').classList.add('show');
+  await delay(400);
+
+  // A acquires lock
+  moveSprite('A', 0);
+  $('lock-anim').classList.add('show');
+  log('thread_A: LOCK acquired ✓','log-A');
+  setStatus('Thread A acquired the lock. Thread B must wait.','var(--ok)');
+  await delay(600);
+
+  // A does all 3 steps uninterrupted
+  for(let s=0;s<3;s++){
+    moveSprite('A',s);
+    setStep('A',s,'A');
+    if(s===0){ setReg('A','0'); log('thread_A: READ count=0','log-A'); }
+    if(s===1){ setReg('A','0+1'); log('thread_A: reg_A = 1','log-A'); }
+    if(s===2){ setCount(1,false,false); log('thread_A: WRITE count=1 → UNLOCK','log-A'); }
+    await delay(600);
+    setStep('A',s,'ok');
+  }
+
+  // A releases
+  moveSprite('A',-1);
+  $('lock-anim').classList.remove('show');
+  setReg('A','1');
+  await delay(400);
+
+  // B waits then gets lock
+  log('thread_B: Lock released — B acquires it now','log-B');
+  setStatus('Thread A done. Thread B gets the lock now.','var(--B)');
+  await delay(400);
+
+  $('lock-anim').classList.add('show');
+  for(let s=0;s<3;s++){
+    moveSprite('B',s);
+    setStep('B',s,'B');
+    if(s===0){ setReg('B','1'); log('thread_B: READ count=1','log-B'); }
+    if(s===1){ setReg('B','1+1'); log('thread_B: reg_B = 2','log-B'); }
+    if(s===2){ setCount(2,false,true); log('thread_B: WRITE count=2 ✓ CORRECT!','log-ok'); }
+    await delay(600);
+    setStep('B',s,'ok');
+  }
+
+  moveSprite('B',-1);
+  $('lock-anim').classList.remove('show');
+  $('mutex-lane').classList.remove('show');
+
+  setStatus('count = 2 ✅  Mutex prevented the race. Every time.','var(--ok)');
+  await delay(1200);
+  clearSteps(); clearRegs();
+}
+
+// ── BOOT ──
+window.addEventListener('load', ()=>{
+  reset();
+  setTimeout(startAnimation, 600);
+});
+</script>
+</body>
+</html>
