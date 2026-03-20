@@ -14,7 +14,7 @@ A collection of one-screen, fullscreen animations that make the hardest parts of
 | 02 | [Race Condition](race_condition.html) | Concurrency | ✅ Live |
 | 03 | Virtual Memory | OS / Systems | 🔜 Coming Soon |
 | 04 | TCP Handshake | Networking | 🔜 Coming Soon |
-| 05 | LRU Cache | Data Structures | 🔜 Coming Soon |
+| 05 | [LRU Cache](lru-cache.html) | Data Structures | ✅ Live |
 | 06 | Load Balancer | System Design | 🔜 Coming Soon |
 | 07 | Deadlock | Concurrency | 🔜 Coming Soon |
 | 08 | How the Internet Works | Networking | 🔜 Coming Soon |
@@ -28,6 +28,7 @@ cs-visualized/
 ├── index.html               ← Dashboard (homepage)
 ├── click_run_explainer.html ← Animation 01
 ├── race_condition.html      ← Animation 02
+├── lru-cache.html           ← Animation 05
 └── README.md
 ```
 
