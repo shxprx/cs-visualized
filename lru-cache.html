@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LRU Cache — CS Visualized</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:ital,wght@0,400;0,600;0,700;1,400&family=Outfit:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+
+:root {
+  --bg:      #07080d;
+  --bg2:     #0d0f17;
+  --surface: #121520;
+  --border:  #1c2030;
+  --border2: #252a3a;
+  --purple:  #a855f7;
+  --blue:    #4f9eff;
+  --teal:    #00e5c0;
+  --red:     #ff4560;
+  --amber:   #ffb300;
+  --green:   #00e676;
+  --text:    #dde2f0;
+  --dim:     #444860;
+  --dim2:    #1e2130;
+  --mono:    'IBM Plex Mono', monospace;
+  --display: 'Bebas Neue', sans-serif;
+  --body:    'Outfit', sans-serif;
+}
+
+html, body { width:100%; height:100%; overflow:hidden; background:var(--bg); color:var(--text); font-family:var(--body); }
+
+body::after {
+  content:''; position:fixed; inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  pointer-events:none; z-index:9999;
+}
+
+/* AMBIENT */
+.amb { position:fixed; inset:0; pointer-events:none; z-index:0; overflow:hidden; }
+.blob { position:absolute; border-radius:50%; filter:blur(110px); }
+.b1 { width:500px; height:500px; top:-150px; left:-100px; background:radial-gradient(circle,rgba(168,85,247,0.07),transparent); animation:bA 14s ease-in-out infinite; }
+.b2 { width:400px; height:400px; bottom:-100px; right:-100px; background:radial-gradient(circle,rgba(79,158,255,0.06),transparent); animation:bB 18s ease-in-out infinite; }
+@keyframes bA { 0%,100%{transform:translate(0,0)} 50%{transform:translate(40px,50px)} }
+@keyframes bB { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-40px,-30px)} }
+
+/* NAVBAR */
+#navbar {
+  position:fixed; top:0; left:0; right:0; height:58px;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 2rem;
+  border-bottom:1px solid var(--border);
+  background:rgba(7,8,13,0.85);
+  backdrop-filter:blur(16px);
+  z-index:100;
+}
+.nav-l { display:flex; align-items:center; gap:0.75rem; }
+.nav-logo-box { width:28px; height:28px; border-radius:6px; background:var(--purple); display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:0.65rem; font-weight:700; color:#fff; }
+.nav-title { font-family:var(--body); font-weight:700; font-size:0.9rem; color:var(--text); }
+.nav-title span { color:var(--purple); }
+.nav-sep { width:1px; height:18px; background:var(--border2); margin:0 0.2rem; }
+.nav-topic { font-family:var(--mono); font-size:0.65rem; letter-spacing:0.2em; text-transform:uppercase; color:var(--purple); opacity:0.8; }
+#phase-pill { font-family:var(--mono); font-size:0.65rem; letter-spacing:0.15em; text-transform:uppercase; padding:0.3rem 0.9rem; border-radius:100px; border:1px solid var(--border2); color:var(--dim); transition:all 0.5s; }
+
+/* STAGE */
+#stage {
+  position:fixed; inset:0;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  gap:1.1rem;
+  padding:70px 2rem 60px;
+  z-index:1;
+}
+
+/* CAPACITY */
+#cap-row { display:flex; align-items:center; gap:0.9rem; font-family:var(--mono); font-size:0.68rem; color:var(--dim); }
+.cap-label { letter-spacing:0.15em; text-transform:uppercase; }
+.cap-slots { display:flex; gap:5px; }
+.cap-slot { width:11px; height:11px; border-radius:3px; background:var(--dim2); border:1px solid var(--border2); transition:background 0.6s, border-color 0.6s, box-shadow 0.6s; }
+.cap-slot.used { background:var(--purple); border-color:var(--purple); box-shadow:0 0 6px rgba(168,85,247,0.5); }
+
+/* CACHE WRAP */
+#cache-wrap { display:flex; flex-direction:column; align-items:center; gap:0.5rem; width:100%; max-width:700px; }
+.cache-labels { display:flex; width:100%; justify-content:space-between; padding:0 6px; font-family:var(--mono); font-size:0.58rem; color:var(--dim); letter-spacing:0.15em; text-transform:uppercase; }
+
+#cache-chain { display:flex; align-items:center; width:100%; min-height:96px; }
+.ptr-label { font-family:var(--mono); font-size:0.58rem; letter-spacing:0.1em; text-transform:uppercase; display:flex; flex-direction:column; align-items:center; gap:5px; flex-shrink:0; width:58px; }
+.ptr-tag { padding:0.2rem 0.5rem; border-radius:4px; border:1px solid; font-size:0.56rem; }
+.ptr-mru { color:var(--teal);  border-color:rgba(0,229,192,0.3);  background:rgba(0,229,192,0.06); }
+.ptr-lru { color:var(--red);   border-color:rgba(255,69,96,0.3);   background:rgba(255,69,96,0.06); }
+.ptr-arrow { color:var(--dim); font-size:1rem; }
+
+#nodes-area { flex:1; display:flex; align-items:center; gap:3px; position:relative; overflow:visible; min-height:96px; justify-content:flex-start; }
+
+/* NODE */
+.cnode { display:flex; flex-direction:column; align-items:center; position:relative; flex-shrink:0; }
+.cnode-box {
+  width:90px; height:76px; border-radius:12px;
+  background:var(--surface); border:1.5px solid var(--border2);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
+  position:relative; overflow:hidden;
+  transition: border-color 0.6s, box-shadow 0.6s, background 0.6s, transform 0.6s;
+}
+.cnode-box::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:currentColor; opacity:0.25; transition:opacity 0.4s; }
+.cnode-key  { font-family:var(--display); font-size:1.6rem; letter-spacing:0.05em; line-height:1; transition:color 0.4s; }
+.cnode-val  { font-family:var(--mono); font-size:0.58rem; color:var(--dim); transition:color 0.4s; }
+.cnode-rank { position:absolute; top:5px; right:6px; font-family:var(--mono); font-size:0.48rem; color:var(--dim); opacity:0.6; }
+
+.clink { font-size:0.85rem; color:var(--border2); flex-shrink:0; transition:color 0.5s; margin:0 1px; }
+.clink.live { color:var(--purple); }
+
+/* States */
+.cnode.s-fresh .cnode-box { border-color:var(--teal);  box-shadow:0 0 22px rgba(0,229,192,0.28); background:rgba(0,229,192,0.06); color:var(--teal); }
+.cnode.s-hit   .cnode-box { border-color:var(--green); box-shadow:0 0 22px rgba(0,230,118,0.28); background:rgba(0,230,118,0.06); color:var(--green); }
+.cnode.s-evict .cnode-box { border-color:var(--red);   box-shadow:0 0 22px rgba(255,69,96,0.32);  background:rgba(255,69,96,0.07);  color:var(--red); }
+
+@keyframes evictOut { 0%{transform:scale(1) translateY(0);opacity:1} 30%{transform:scale(1.08) translateY(-10px)} 100%{transform:scale(0.4) translateY(-50px);opacity:0} }
+.cnode.evicting { animation:evictOut 0.9s ease forwards; pointer-events:none; }
+
+@keyframes nodeIn { 0%{transform:scale(0.3) translateY(28px);opacity:0} 65%{transform:scale(1.06) translateY(-4px)} 100%{transform:scale(1) translateY(0);opacity:1} }
+.cnode.entering { animation:nodeIn 0.75s cubic-bezier(0.34,1.4,0.64,1) forwards; }
+
+@keyframes hitBounce { 0%,100%{transform:scale(1)} 40%{transform:scale(1.13)} 70%{transform:scale(0.96)} }
+.cnode.hitting { animation:hitBounce 0.65s ease; }
+
+/* REQUEST QUEUE */
+#req-row { display:flex; flex-direction:column; align-items:flex-start; gap:0.5rem; width:100%; max-width:700px; }
+#incoming-label { font-family:var(--mono); font-size:0.58rem; color:var(--dim); letter-spacing:0.2em; text-transform:uppercase; }
+#req-strip { display:flex; gap:5px; flex-wrap:wrap; }
+.req-chip {
+  width:42px; height:34px; border-radius:8px; border:1px solid var(--border2);
+  background:var(--surface); display:flex; align-items:center; justify-content:center;
+  font-family:var(--display); font-size:1.05rem; color:var(--dim);
+  transition:all 0.5s; flex-shrink:0;
+}
+.req-chip.current  { border-color:var(--purple); color:var(--purple); background:rgba(168,85,247,0.1); box-shadow:0 0 14px rgba(168,85,247,0.3); transform:translateY(-5px) scale(1.08); }
+.req-chip.done-hit { border-color:rgba(0,230,118,0.3); color:var(--green); background:rgba(0,230,118,0.05); transform:none; }
+.req-chip.done-miss{ border-color:rgba(255,69,96,0.3);  color:var(--red);   background:rgba(255,69,96,0.05);  transform:none; }
+
+/* SCOREBOARD */
+#scoreboard { display:flex; gap:2.5rem; align-items:center; }
+.score-item { display:flex; flex-direction:column; align-items:center; gap:3px; }
+.score-num { font-family:var(--display); font-size:2.2rem; line-height:1; letter-spacing:0.05em; transition:all 0.3s; }
+.score-label { font-family:var(--mono); font-size:0.56rem; letter-spacing:0.2em; text-transform:uppercase; color:var(--dim); }
+.s-hit-c   { color:var(--green); }
+.s-miss-c  { color:var(--red); }
+.s-ratio-c { color:var(--amber); }
+@keyframes sPop { 0%{transform:scale(1.5)} 100%{transform:scale(1)} }
+.score-pop { animation:sPop 0.4s ease; }
+
+/* LOG */
+#log {
+  width:100%; max-width:700px; height:58px;
+  background:rgba(0,0,0,0.35); border:1px solid var(--border); border-radius:10px;
+  padding:0.5rem 1rem; overflow:hidden;
+  display:flex; flex-direction:column; justify-content:flex-end; gap:2px;
+  font-family:var(--mono); font-size:0.66rem;
+}
+.ll { display:flex; gap:0.5rem; opacity:0; transform:translateY(6px); animation:llIn 0.45s ease forwards; }
+@keyframes llIn { to{ opacity:1; transform:translateY(0); } }
+.lt{ color:var(--dim); } .lp{ color:var(--purple); } .lh{ color:var(--green); }
+.lm{ color:var(--red); } .le{ color:var(--amber);  } .ls{ color:var(--dim); }
+
+/* BOTTOM BAR */
+#botbar {
+  position:fixed; bottom:0; left:0; right:0; height:52px;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 2rem; border-top:1px solid var(--border);
+  background:rgba(7,8,13,0.85); backdrop-filter:blur(16px); z-index:100;
+}
+#status { font-family:var(--mono); font-size:0.7rem; color:var(--dim); transition:color 0.4s; max-width:70%; }
+#replay-btn { font-family:var(--mono); font-size:0.68rem; letter-spacing:0.1em; text-transform:uppercase; padding:0.4rem 1.2rem; border-radius:6px; border:1px solid var(--border2); background:transparent; color:var(--dim); cursor:pointer; transition:all 0.25s; }
+#replay-btn:hover { border-color:var(--purple); color:var(--purple); }
+
+/* OVERLAY */
+#overlay {
+  position:fixed; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:1.2rem;
+  background:rgba(7,8,13,0.94); backdrop-filter:blur(8px);
+  z-index:200; opacity:0; pointer-events:none; transition:opacity 0.5s;
+  padding:2rem;
+}
+#overlay.show { opacity:1; pointer-events:all; }
+.ov-icon  { font-size:3.5rem; animation:ovI 0.55s cubic-bezier(0.34,1.5,0.64,1); }
+@keyframes ovI { 0%{transform:scale(0.2) rotate(-15deg)} 100%{transform:scale(1) rotate(0)} }
+.ov-title { font-family:var(--display); font-size:clamp(2rem,5vw,4rem); letter-spacing:0.05em; text-align:center; }
+.ov-sub   { font-family:var(--mono); font-size:0.82rem; color:var(--dim); line-height:1.85; text-align:center; max-width:500px; }
+.ov-code  { font-family:var(--mono); font-size:0.78rem; background:var(--surface); border:1px solid var(--border2); border-radius:10px; padding:1.2rem 2rem; line-height:2; text-align:left; white-space:pre; }
+.ov-code .kw  { color:var(--purple); }
+.ov-code .fn  { color:var(--teal);   }
+.ov-code .cm  { color:var(--dim);    }
+.ov-code .val { color:var(--amber);  }
+.ov-tap { font-family:var(--mono); font-size:0.68rem; color:var(--dim); letter-spacing:0.2em; text-transform:uppercase; animation:blk 1.5s ease infinite; cursor:pointer; padding:0.5rem 1rem; }
+@keyframes blk { 0%,100%{opacity:0.3} 50%{opacity:1} }
+</style>
+</head>
+<body>
+
+<div class="amb"><div class="blob b1"></div><div class="blob b2"></div></div>
+
+<!-- NAVBAR -->
+<nav id="navbar">
+  <div class="nav-l">
+    <div class="nav-logo-box">CS</div>
+    <div class="nav-title">Visualized<span>.</span></div>
+    <div class="nav-sep"></div>
+    <div class="nav-topic">LRU Cache</div>
+  </div>
+  <div id="phase-pill">INITIALIZING</div>
+</nav>
+
+<!-- STAGE -->
+<div id="stage">
+
+  <div id="cap-row">
+    <div class="cap-label">Cache Capacity</div>
+    <div class="cap-slots" id="cap-slots"></div>
+    <div id="cap-text" style="font-family:var(--mono);font-size:0.68rem;color:var(--dim)">0 / 4</div>
+  </div>
+
+  <div id="cache-wrap">
+    <div class="cache-labels">
+      <span>← Most Recently Used (Head)</span>
+      <span>(Tail) Least Recently Used →</span>
+    </div>
+    <div id="cache-chain">
+      <div class="ptr-label">
+        <div class="ptr-tag ptr-mru">MRU</div>
+        <div class="ptr-arrow">→</div>
+      </div>
+      <div id="nodes-area"></div>
+      <div class="ptr-label" style="align-items:flex-end">
+        <div class="ptr-tag ptr-lru">LRU</div>
+        <div class="ptr-arrow">←</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="req-row">
+    <div id="incoming-label">Request sequence</div>
+    <div id="req-strip"></div>
+  </div>
+
+  <div id="scoreboard">
+    <div class="score-item">
+      <div class="score-num s-hit-c"   id="s-hit">0</div>
+      <div class="score-label">Cache Hits</div>
+    </div>
+    <div class="score-item">
+      <div class="score-num s-miss-c"  id="s-miss">0</div>
+      <div class="score-label">Misses</div>
+    </div>
+    <div class="score-item">
+      <div class="score-num s-ratio-c" id="s-ratio">0%</div>
+      <div class="score-label">Hit Ratio</div>
+    </div>
+  </div>
+
+  <div id="log"></div>
+</div>
+
+<!-- BOTTOM BAR -->
+<div id="botbar">
+  <div id="status">Ready.</div>
+  <button id="replay-btn" onclick="startAnim()">↺ Replay</button>
+</div>
+
+<!-- OVERLAY -->
+<div id="overlay" onclick="closeOverlay()">
+  <div class="ov-icon"  id="ov-icon">🧠</div>
+  <div class="ov-title" id="ov-title">LRU CACHE</div>
+  <div class="ov-sub"   id="ov-sub"></div>
+  <div class="ov-code"  id="ov-code"></div>
+  <div class="ov-tap"   id="ov-tap">[ tap to continue ]</div>
+</div>
+
+<script>
+/* ═══════════ CONFIG ═══════════ */
+const CAPACITY = 4;
+
+const REQUESTS = [
+  { k:'A', v:1 },
+  { k:'B', v:2 },
+  { k:'C', v:3 },
+  { k:'A', v:1 },   // HIT → A moves to MRU
+  { k:'D', v:4 },   // MISS → cache now full
+  { k:'E', v:5 },   // MISS + EVICT D (LRU)
+  { k:'C', v:3 },   // HIT → C moves to MRU
+  { k:'F', v:6 },   // MISS + EVICT
+  { k:'A', v:1 },   // HIT
+  { k:'B', v:2 },   // MISS + EVICT
+];
+
+/* ═══════════ STATE ═══════════ */
+let cache = [];  // index 0 = MRU, last = LRU
+let hits = 0, misses = 0;
+let running = false;
+let timers = [];
+let overlayResolve = null;
+
+const delay = ms => new Promise(r => { timers.push(setTimeout(r, ms)); });
+const $     = id  => document.getElementById(id);
+
+/* ═══════════ UI HELPERS ═══════════ */
+function setStatus(msg, color = 'var(--dim)') {
+  $('status').textContent = msg;
+  $('status').style.color = color;
+}
+
+function setPill(txt, color = 'var(--dim)') {
+  const p = $('phase-pill');
+  p.textContent = txt; p.style.color = color; p.style.borderColor = color;
+}
+
+function addLog(msg, cls = 'ls') {
+  const el = $('log');
+  while (el.children.length >= 3) el.removeChild(el.children[0]);
+  const line = document.createElement('div'); line.className = 'll';
+  const ts   = document.createElement('span'); ts.className = 'lt'; ts.textContent = new Date().toISOString().substr(11,8);
+  const m    = document.createElement('span'); m.className  = cls;  m.textContent  = '  ' + msg;
+  line.appendChild(ts); line.appendChild(m);
+  el.appendChild(line);
+}
+
+function updateScores() {
+  const total = hits + misses;
+  $('s-hit').textContent   = hits;
+  $('s-miss').textContent  = misses;
+  $('s-ratio').textContent = total ? Math.round(hits / total * 100) + '%' : '0%';
+}
+
+function popScore(id) {
+  const el = $(id);
+  el.classList.remove('score-pop');
+  void el.offsetWidth;
+  el.classList.add('score-pop');
+}
+
+/* ═══════════ CAPACITY SLOTS ═══════════ */
+function buildSlots() {
+  const sl = $('cap-slots'); sl.innerHTML = '';
+  for (let i = 0; i < CAPACITY; i++) {
+    const d = document.createElement('div');
+    d.className = 'cap-slot'; d.id = 'slot-' + i;
+    sl.appendChild(d);
+  }
+}
+
+function updateSlots() {
+  for (let i = 0; i < CAPACITY; i++)
+    $('slot-' + i).classList.toggle('used', i < cache.length);
+  $('cap-text').textContent = cache.length + ' / ' + CAPACITY;
+}
+
+/* ═══════════ REQUEST CHIPS ═══════════ */
+function buildChips() {
+  const strip = $('req-strip'); strip.innerHTML = '';
+  REQUESTS.forEach((r, i) => {
+    const c = document.createElement('div');
+    c.className = 'req-chip'; c.id = 'chip-' + i; c.textContent = r.k;
+    strip.appendChild(c);
+  });
+}
+
+function setChip(i, state) {
+  const c = $('chip-' + i);
+  c.className = 'req-chip';
+  if (state) c.classList.add(state);
+}
+
+/* ═══════════ CACHE RENDER ═══════════ */
+function renderCache(hlKey = null, hlState = '') {
+  const area = $('nodes-area'); area.innerHTML = '';
+
+  if (cache.length === 0) return;
+
+  cache.forEach((item, idx) => {
+    if (idx > 0) {
+      const lk = document.createElement('div');
+      lk.className = 'clink' + (cache.length > 1 ? ' live' : '');
+      lk.textContent = '⟷';
+      area.appendChild(lk);
+    }
+
+    const node = document.createElement('div');
+    node.className = 'cnode';
+    node.id = 'cnode-' + item.k;
+
+    if (item.k === hlKey && hlState) node.classList.add(hlState);
+
+    const rankTxt = idx === 0 ? 'MRU' : idx === cache.length - 1 ? 'LRU' : `#${idx + 1}`;
+    node.innerHTML = `
+      <div class="cnode-box">
+        <div class="cnode-rank">${rankTxt}</div>
+        <div class="cnode-key">${item.k}</div>
+        <div class="cnode-val">val = ${item.v}</div>
+      </div>`;
+    area.appendChild(node);
+  });
+}
+
+/* ═══════════ CACHE OPS ═══════════ */
+const findIdx  = k => cache.findIndex(x => x.k === k);
+const promMRU  = k => { const i = findIdx(k); if(i>-1){ const [x]=cache.splice(i,1); cache.unshift(x); } };
+const evictLRU = ()=> cache.pop();
+const insertMRU= (k,v)=> cache.unshift({k,v});
+
+/* ═══════════ OVERLAY ═══════════ */
+function showOverlay(icon, title, color, sub, code, tap = '[ tap to continue ]') {
+  $('ov-icon').textContent  = icon;
+  $('ov-title').textContent = title;
+  $('ov-title').style.color = color;
+  $('ov-sub').innerHTML     = sub;
+  $('ov-code').innerHTML    = code;
+  $('ov-tap').textContent   = tap;
+  $('overlay').classList.add('show');
+}
+
+function closeOverlay() {
+  $('overlay').classList.remove('show');
+  if (overlayResolve) { overlayResolve(); overlayResolve = null; }
+}
+
+const waitOverlay = () => new Promise(r => { overlayResolve = r; });
+
+/* ═══════════ RESET ═══════════ */
+function reset() {
+  timers.forEach(clearTimeout); timers = [];
+  running = false;
+  cache = []; hits = 0; misses = 0;
+  buildSlots(); buildChips();
+  updateSlots(); updateScores();
+  $('nodes-area').innerHTML = '';
+  $('log').innerHTML = '';
+  $('overlay').classList.remove('show');
+  setPill('READY', 'var(--dim)');
+  setStatus('Press Replay to start.');
+}
+
+/* ═══════════ MAIN ANIMATION ═══════════ */
+async function startAnim() {
+  if (running) return;
+  reset();
+  await delay(500);
+  running = true;
+
+  /* — INTRO — */
+  showOverlay(
+    '🧠', 'LRU CACHE', 'var(--purple)',
+    `Keep the <strong style="color:var(--text)">most recently used</strong> items close.<br>
+     Evict the <strong style="color:var(--red)">least recently used</strong> when full.<br>
+     Cache capacity: <strong style="color:var(--amber)">${CAPACITY} slots</strong>`,
+    `<span class="kw">get</span>(key)       → <span class="fn">O(1)</span>  <span class="cm">// hashmap lookup</span>\n<span class="kw">put</span>(key, val)  → <span class="fn">O(1)</span>  <span class="cm">// doubly linked list\n// full? evict LRU tail, insert MRU head</span>`
+  );
+  await waitOverlay();
+  if (!running) return;
+
+  setPill('RUNNING', 'var(--purple)');
+  addLog('Cache initialized. Capacity = ' + CAPACITY, 'ls');
+  await delay(800);
+
+  /* — PROCESS REQUESTS — */
+  for (let i = 0; i < REQUESTS.length; i++) {
+    if (!running) return;
+    const req = REQUESTS[i];
+
+    setChip(i, 'current');
+    setStatus(`Requesting key  "${req.k}" …`, 'var(--text)');
+    await delay(1100);
+
+    const inCache = findIdx(req.k) !== -1;
+
+    if (inCache) {
+      /* ── HIT ── */
+      hits++;
+      const oldPos = findIdx(req.k) + 1;
+      setStatus(`HIT ✓  —  "${req.k}" found at position ${oldPos}`, 'var(--green)');
+      addLog(`GET "${req.k}"  →  HIT ✓   (pos ${oldPos})`, 'lh');
+
+      renderCache(req.k, 's-hit');
+      const ne = $('cnode-' + req.k);
+      if (ne) ne.classList.add('hitting');
+      await delay(1200);
+
+      promMRU(req.k);
+      renderCache(req.k, 's-fresh');
+      addLog(`"${req.k}" promoted  →  MRU head`, 'lp');
+      setStatus(`"${req.k}" moved to MRU  ↑`, 'var(--teal)');
+      await delay(1200);
+
+      popScore('s-hit');
+      setChip(i, 'done-hit');
+
+    } else {
+      /* ── MISS ── */
+      misses++;
+      setStatus(`MISS ✗  —  "${req.k}" not in cache`, 'var(--red)');
+      addLog(`GET "${req.k}"  →  MISS ✗`, 'lm');
+      await delay(1100);
+
+      if (cache.length >= CAPACITY) {
+        const lru = cache[cache.length - 1];
+        setStatus(`Cache full!  Evicting LRU: "${lru.k}"`, 'var(--amber)');
+        addLog(`EVICT "${lru.k}"  ←  was LRU tail`, 'le');
+
+        renderCache(lru.k, 's-evict');
+        await delay(800);
+        const ev = $('cnode-' + lru.k);
+        if (ev) ev.classList.add('evicting');
+        await delay(1000);
+
+        evictLRU();
+        updateSlots();
+        renderCache(null, '');
+        await delay(700);
+      }
+
+      insertMRU(req.k, req.v);
+      updateSlots();
+      renderCache(req.k, 's-fresh');
+      const nn = $('cnode-' + req.k);
+      if (nn) nn.classList.add('entering');
+      addLog(`INSERT "${req.k}" = ${req.v}  →  MRU head`, 'lp');
+      setStatus(`"${req.k}" inserted at MRU head`, 'var(--teal)');
+      await delay(1200);
+
+      popScore('s-miss');
+      setChip(i, 'done-miss');
+    }
+
+    updateScores();
+    renderCache(null, '');
+    await delay(900);
+  }
+
+  if (!running) return;
+
+  /* — FINAL — */
+  const total = hits + misses;
+  const ratio = Math.round(hits / total * 100);
+  showOverlay(
+    '🏆', 'ALL DONE!', 'var(--teal)',
+    `<strong style="color:var(--green)">${hits} hits</strong> &nbsp;·&nbsp; <strong style="color:var(--red)">${misses} misses</strong> &nbsp;·&nbsp; <strong style="color:var(--amber)">${ratio}% hit ratio</strong><br><br>
+     LRU keeps hot data close, cold data out.<br>
+     Used in CPUs, browsers, Redis, Linux — everywhere speed matters.`,
+    `<span class="cm">// Real-world LRU users:</span>\n<span class="fn">Redis</span>   → <span class="val">maxmemory-policy allkeys-lru</span>\n<span class="fn">Linux</span>   → <span class="val">page cache / swap eviction</span>\n<span class="fn">CPU</span>     → <span class="val">L1 / L2 / L3 cache lines</span>`,
+    '[ tap to replay ]'
+  );
+  await waitOverlay();
+
+  running = false;
+  reset();
+  startAnim();
+}
+
+/* ═══════════ BOOT ═══════════ */
+window.addEventListener('load', () => {
+  reset();
+  setTimeout(startAnim, 600);
+});
+</script>
+</body>
+</html>
