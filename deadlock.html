@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deadlock — CS Visualized</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600;700&family=Barlow:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+
+:root{
+  --bg:    #080608;
+  --bg2:   #0e0b0e;
+  --surf:  #130f14;
+  --bord:  #1e1820;
+  --bord2: #2a2030;
+
+  --A:     #ff3366;
+  --B:     #33aaff;
+  --lock:  #ffcc00;
+  --dead:  #ff6600;
+  --fix:   #00ff99;
+  --text:  #e8e0f0;
+  --dim:   #4a3d55;
+  --dim2:  #1a1520;
+
+  --mono:    'IBM Plex Mono', monospace;
+  --display: 'Bebas Neue', sans-serif;
+  --body:    'Barlow', sans-serif;
+}
+
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--body);}
+
+/* noise */
+body::after{content:'';position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events:none;z-index:9999;}
+
+/* ── GRID BG ── */
+#grid-bg{
+  position:fixed;inset:0;z-index:0;
+  background-image:
+    linear-gradient(rgba(255,51,102,0.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(51,170,255,0.03) 1px,transparent 1px);
+  background-size:48px 48px;
+}
+
+/* ── NAVBAR ── */
+#navbar{
+  position:fixed;top:0;left:0;right:0;height:56px;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 2rem;border-bottom:1px solid var(--bord);
+  background:rgba(8,6,8,0.88);backdrop-filter:blur(18px);z-index:200;
+}
+.nav-left{display:flex;align-items:center;gap:0.7rem;}
+.nav-mark{width:26px;height:26px;border-radius:6px;background:var(--dead);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:0.6rem;font-weight:700;color:#000;}
+.nav-name{font-weight:700;font-size:0.88rem;}
+.nav-name span{color:var(--dead);}
+.nav-sep{width:1px;height:16px;background:var(--bord2);margin:0 0.2rem;}
+.nav-topic{font-family:var(--mono);font-size:0.6rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--dead);opacity:0.8;}
+#phase-pill{font-family:var(--mono);font-size:0.6rem;letter-spacing:0.15em;text-transform:uppercase;padding:0.28rem 0.85rem;border-radius:100px;border:1px solid var(--bord2);color:var(--dim);transition:all 0.5s;}
+
+/* ── SOUND TOGGLE ── */
+#sound-btn{
+  font-family:var(--mono);font-size:0.65rem;letter-spacing:0.08em;
+  padding:0.3rem 0.8rem;border-radius:6px;border:1px solid var(--bord2);
+  background:transparent;color:var(--dim);cursor:pointer;transition:all 0.2s;
+}
+#sound-btn:hover{border-color:var(--lock);color:var(--lock);}
+#sound-btn.on{border-color:var(--fix);color:var(--fix);}
+
+/* ── STAGE ── */
+#stage{
+  position:fixed;inset:0;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  padding:64px 2rem 56px;
+  z-index:1;gap:1rem;
+}
+
+/* ── ARENA — the main visual ── */
+#arena{
+  position:relative;
+  width:min(520px, 90vw);
+  height:min(520px, 45vh);
+  flex-shrink:0;
+}
+
+/* SVG lines for arrows */
+#arena-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;z-index:1;}
+
+/* ── THREAD CIRCLES ── */
+.thread{
+  position:absolute;
+  width:88px;height:88px;
+  border-radius:50%;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  border:2px solid;
+  transition:box-shadow 0.5s,border-color 0.5s,background 0.5s;
+  z-index:10;
+  cursor:default;
+}
+.thread-label{font-family:var(--display);font-size:1.6rem;letter-spacing:0.05em;line-height:1;}
+.thread-sub{font-family:var(--mono);font-size:0.52rem;letter-spacing:0.1em;opacity:0.7;text-transform:uppercase;}
+
+#tA{
+  top:8%;left:50%;transform:translateX(-50%);
+  border-color:rgba(255,51,102,0.4);
+  background:rgba(255,51,102,0.07);
+  color:var(--A);
+}
+#tB{
+  bottom:8%;left:50%;transform:translateX(-50%);
+  border-color:rgba(51,170,255,0.4);
+  background:rgba(51,170,255,0.07);
+  color:var(--B);
+}
+
+.thread.waiting{animation:threadWait 1.2s ease infinite;}
+@keyframes threadWait{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(0.95)}}
+
+.thread.deadlocked{
+  animation:deadlockPulse 0.8s ease infinite;
+  border-color:var(--dead)!important;
+  box-shadow:0 0 30px rgba(255,102,0,0.5)!important;
+}
+@keyframes deadlockPulse{0%,100%{box-shadow:0 0 20px rgba(255,102,0,0.4)}50%{box-shadow:0 0 40px rgba(255,102,0,0.8)}}
+
+.thread.fixed{
+  border-color:var(--fix)!important;
+  box-shadow:0 0 24px rgba(0,255,153,0.4)!important;
+  background:rgba(0,255,153,0.07)!important;
+  color:var(--fix)!important;
+  animation:none!important;
+}
+
+/* ── LOCK BOXES ── */
+.lock-box{
+  position:absolute;
+  width:72px;height:72px;
+  border-radius:12px;
+  border:1.5px solid rgba(255,204,0,0.3);
+  background:rgba(255,204,0,0.05);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;z-index:10;
+  transition:all 0.5s;
+}
+.lock-icon{font-size:1.4rem;line-height:1;transition:all 0.4s;}
+.lock-name{font-family:var(--mono);font-size:0.52rem;color:var(--lock);opacity:0.7;letter-spacing:0.1em;text-transform:uppercase;}
+.lock-owner{font-family:var(--mono);font-size:0.5rem;margin-top:2px;letter-spacing:0.05em;height:10px;transition:all 0.4s;}
+
+#lA{left:8%;top:50%;transform:translateY(-50%);}
+#lB{right:8%;top:50%;transform:translateY(-50%);}
+
+.lock-box.held-A{border-color:var(--A);background:rgba(255,51,102,0.1);box-shadow:0 0 16px rgba(255,51,102,0.3);}
+.lock-box.held-B{border-color:var(--B);background:rgba(51,170,255,0.1);box-shadow:0 0 16px rgba(51,170,255,0.3);}
+.lock-box.contested{
+  border-color:var(--dead)!important;
+  background:rgba(255,102,0,0.1)!important;
+  box-shadow:0 0 20px rgba(255,102,0,0.4)!important;
+  animation:lockContest 0.6s ease infinite;
+}
+@keyframes lockContest{0%,100%{transform:translateY(-50%) scale(1)}50%{transform:translateY(-50%) scale(1.06)}}
+.lock-box.freed{border-color:var(--fix);background:rgba(0,255,153,0.06);box-shadow:0 0 14px rgba(0,255,153,0.3);}
+
+/* ── WANT ARROWS (SVG) ── */
+.want-arrow{stroke-width:2;fill:none;stroke-dasharray:6 4;opacity:0;transition:opacity 0.5s;}
+.want-arrow.show{opacity:1;}
+.want-arrow.dead{stroke:var(--dead)!important;stroke-dasharray:4 3;}
+
+/* ── DEADLOCK BANNER ── */
+#dead-banner{
+  position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%) scale(0);
+  font-family:var(--display);font-size:2.2rem;
+  color:var(--dead);letter-spacing:0.08em;
+  background:rgba(8,6,8,0.9);
+  border:2px solid var(--dead);
+  border-radius:12px;
+  padding:0.6rem 1.4rem;
+  white-space:nowrap;
+  z-index:20;
+  transition:transform 0.5s cubic-bezier(0.34,1.5,0.64,1);
+  box-shadow:0 0 40px rgba(255,102,0,0.4);
+  text-shadow:0 0 20px rgba(255,102,0,0.8);
+}
+#dead-banner.show{transform:translate(-50%,-50%) scale(1);}
+
+/* ── INFO PANEL ── */
+#info-panel{
+  width:100%;max-width:560px;
+  background:var(--surf);
+  border:1px solid var(--bord2);
+  border-radius:12px;
+  padding:0.9rem 1.4rem;
+  display:grid;grid-template-columns:1fr auto;
+  align-items:center;gap:1.5rem;
+}
+#info-title{font-family:var(--display);font-size:1.4rem;letter-spacing:0.05em;transition:color 0.4s;line-height:1;}
+#info-desc{font-family:var(--mono);font-size:0.65rem;color:var(--dim);line-height:1.7;margin-top:0.3rem;transition:all 0.4s;}
+.info-badge{font-family:var(--mono);font-size:0.62rem;padding:0.35rem 0.9rem;border-radius:6px;border:1px solid;white-space:nowrap;letter-spacing:0.07em;flex-shrink:0;}
+
+/* ── LOG ── */
+#log{
+  width:100%;max-width:560px;height:52px;
+  background:rgba(0,0,0,0.4);border:1px solid var(--bord);border-radius:10px;
+  padding:0.45rem 1rem;overflow:hidden;
+  display:flex;flex-direction:column;justify-content:flex-end;gap:1px;
+  font-family:var(--mono);font-size:0.63rem;
+}
+.ll{display:flex;gap:0.5rem;opacity:0;transform:translateY(5px);animation:llIn 0.4s ease forwards;}
+@keyframes llIn{to{opacity:1;transform:translateY(0)}}
+.lt{color:var(--dim)}.la{color:var(--A)}.lb{color:var(--B)}
+.ld{color:var(--dead)}.lf{color:var(--fix)}.ls{color:var(--dim)}
+
+/* ── BOTTOM BAR ── */
+#botbar{
+  position:fixed;bottom:0;left:0;right:0;height:50px;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 2rem;border-top:1px solid var(--bord);
+  background:rgba(8,6,8,0.88);backdrop-filter:blur(16px);z-index:200;
+}
+#status{font-family:var(--mono);font-size:0.68rem;color:var(--dim);transition:color 0.4s;max-width:70%;}
+#replay-btn{font-family:var(--mono);font-size:0.66rem;letter-spacing:0.1em;text-transform:uppercase;padding:0.38rem 1.1rem;border-radius:6px;border:1px solid var(--bord2);background:transparent;color:var(--dim);cursor:pointer;transition:all 0.25s;}
+#replay-btn:hover{border-color:var(--dead);color:var(--dead);}
+
+/* ── OVERLAY ── */
+#overlay{
+  position:fixed;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:1.1rem;
+  background:rgba(8,6,8,0.96);backdrop-filter:blur(10px);
+  z-index:500;opacity:0;pointer-events:none;transition:opacity 0.5s;padding:2rem;
+}
+#overlay.show{opacity:1;pointer-events:all;}
+.ov-icon{font-size:3rem;animation:ovPop 0.5s cubic-bezier(0.34,1.5,0.64,1);}
+@keyframes ovPop{0%{transform:scale(0.2) rotate(-10deg)}100%{transform:scale(1) rotate(0)}}
+.ov-title{font-family:var(--display);font-size:clamp(1.8rem,5vw,3.8rem);letter-spacing:0.05em;text-align:center;}
+.ov-sub{font-family:var(--mono);font-size:0.78rem;color:var(--dim);line-height:1.85;text-align:center;max-width:500px;}
+.ov-code{font-family:var(--mono);font-size:0.74rem;background:var(--surf);border:1px solid var(--bord2);border-radius:10px;padding:1rem 1.6rem;line-height:2;text-align:left;white-space:pre;}
+.ov-code .kw{color:var(--A)}.ov-code .fn{color:var(--fix)}.ov-code .cm{color:var(--dim)}.ov-code .val{color:var(--lock)}
+.ov-tap{font-family:var(--mono);font-size:0.63rem;color:var(--dim);letter-spacing:0.2em;text-transform:uppercase;animation:blk 1.5s ease infinite;cursor:pointer;padding:0.5rem;}
+@keyframes blk{0%,100%{opacity:0.3}50%{opacity:1}}
+
+/* screen flash on deadlock */
+@keyframes redFlash{0%{background:rgba(255,51,102,0.15)}100%{background:transparent}}
+.flash{animation:redFlash 0.6s ease forwards;}
+</style>
+</head>
+<body>
+<div id="grid-bg"></div>
+
+<!-- NAVBAR -->
+<nav id="navbar">
+  <div class="nav-left">
+    <div class="nav-mark">CS</div>
+    <div class="nav-name">Visualized<span>.</span></div>
+    <div class="nav-sep"></div>
+    <div class="nav-topic">Deadlock</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:0.8rem;">
+    <button id="sound-btn" onclick="toggleSound()">🔇 Sound OFF</button>
+    <div id="phase-pill">READY</div>
+  </div>
+</nav>
+
+<!-- STAGE -->
+<div id="stage">
+
+  <!-- ARENA -->
+  <div id="arena">
+    <svg id="arena-svg">
+      <!-- want arrows: A wants B's lock, B wants A's lock -->
+      <defs>
+        <marker id="arr-A" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#ff3366"/>
+        </marker>
+        <marker id="arr-B" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#33aaff"/>
+        </marker>
+        <marker id="arr-dead" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#ff6600"/>
+        </marker>
+        <marker id="arr-fix" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#00ff99"/>
+        </marker>
+      </defs>
+      <!-- A holds lA (top → left): arrow from tA to lA -->
+      <line id="svgA-holds-lA" class="want-arrow" stroke="#ff3366" marker-end="url(#arr-A)"
+            x1="50%" y1="18%" x2="19%" y2="50%"/>
+      <!-- B holds lB (bottom → right): arrow from tB to lB -->
+      <line id="svgB-holds-lB" class="want-arrow" stroke="#33aaff" marker-end="url(#arr-B)"
+            x1="50%" y1="82%" x2="81%" y2="50%"/>
+      <!-- A wants lB (top → right) -->
+      <line id="svgA-wants-lB" class="want-arrow" stroke="#ff3366" marker-end="url(#arr-A)"
+            x1="50%" y1="18%" x2="81%" y2="50%"/>
+      <!-- B wants lA (bottom → left) -->
+      <line id="svgB-wants-lA" class="want-arrow" stroke="#33aaff" marker-end="url(#arr-B)"
+            x1="50%" y1="82%" x2="19%" y2="50%"/>
+    </svg>
+
+    <!-- Threads -->
+    <div class="thread" id="tA">
+      <div class="thread-label">T-A</div>
+      <div class="thread-sub">Thread A</div>
+    </div>
+    <div class="thread" id="tB">
+      <div class="thread-label">T-B</div>
+      <div class="thread-sub">Thread B</div>
+    </div>
+
+    <!-- Locks -->
+    <div class="lock-box" id="lA">
+      <div class="lock-icon">🔓</div>
+      <div class="lock-name">Lock A</div>
+      <div class="lock-owner" id="ownerA"></div>
+    </div>
+    <div class="lock-box" id="lB">
+      <div class="lock-icon">🔓</div>
+      <div class="lock-name">Lock B</div>
+      <div class="lock-owner" id="ownerB"></div>
+    </div>
+
+    <!-- Deadlock banner -->
+    <div id="dead-banner">⛔ DEADLOCK</div>
+  </div>
+
+  <!-- INFO PANEL -->
+  <div id="info-panel">
+    <div>
+      <div id="info-title" style="color:var(--dead)">DEADLOCK</div>
+      <div id="info-desc">Two threads. Two locks. Each waiting for the other. Forever.</div>
+    </div>
+    <div class="info-badge" id="info-badge" style="color:var(--dim);border-color:var(--bord2)">—</div>
+  </div>
+
+  <!-- LOG -->
+  <div id="log"></div>
+
+</div>
+
+<!-- BOTTOM BAR -->
+<div id="botbar">
+  <div id="status">Press Replay to start.</div>
+  <button id="replay-btn" onclick="startAnim()">↺ Replay</button>
+</div>
+
+<!-- OVERLAY -->
+<div id="overlay" onclick="closeOverlay()">
+  <div class="ov-icon"  id="ov-icon">⛔</div>
+  <div class="ov-title" id="ov-title">DEADLOCK</div>
+  <div class="ov-sub"   id="ov-sub"></div>
+  <div class="ov-code"  id="ov-code"></div>
+  <div class="ov-tap"   id="ov-tap">[ tap to continue ]</div>
+</div>
+
+<script>
+/* ══════════════════════════════════
+   WEB AUDIO ENGINE
+══════════════════════════════════ */
+let audioCtx = null;
+let soundOn  = false;
+
+function initAudio(){
+  if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+}
+
+function toggleSound(){
+  soundOn = !soundOn;
+  const btn = document.getElementById('sound-btn');
+  if(soundOn){
+    initAudio();
+    btn.textContent='🔊 Sound ON';
+    btn.classList.add('on');
+    playTone(440,0.08,'sine',0.15); // confirmation beep
+  } else {
+    btn.textContent='🔇 Sound OFF';
+    btn.classList.remove('on');
+  }
+}
+
+// Generic tone
+function playTone(freq, vol, type, dur, startDelay=0){
+  if(!soundOn||!audioCtx) return;
+  const o=audioCtx.createOscillator();
+  const g=audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+  o.type=type; o.frequency.setValueAtTime(freq,audioCtx.currentTime+startDelay);
+  g.gain.setValueAtTime(0,audioCtx.currentTime+startDelay);
+  g.gain.linearRampToValueAtTime(vol,audioCtx.currentTime+startDelay+0.01);
+  g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+startDelay+dur);
+  o.start(audioCtx.currentTime+startDelay);
+  o.stop(audioCtx.currentTime+startDelay+dur+0.05);
+}
+
+// Lock acquired — satisfying click
+function sndLockAcquire(isA){
+  if(!soundOn||!audioCtx) return;
+  playTone(isA?660:520, 0.18, 'square', 0.08);
+  playTone(isA?880:700, 0.10, 'sine',   0.12, 0.05);
+}
+
+// Waiting / blocked — low anxious hum
+function sndWaiting(){
+  if(!soundOn||!audioCtx) return;
+  playTone(120, 0.08, 'sawtooth', 0.4);
+  playTone(90,  0.06, 'sawtooth', 0.4, 0.05);
+}
+
+// Deadlock — heavy crash
+function sndDeadlock(){
+  if(!soundOn||!audioCtx) return;
+  // Low boom
+  const buf=audioCtx.createBuffer(1,audioCtx.sampleRate*0.6,audioCtx.sampleRate);
+  const d=buf.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.exp(-i/(audioCtx.sampleRate*0.15));
+  const src=audioCtx.createBufferSource();
+  const g=audioCtx.createGain(); const f=audioCtx.createBiquadFilter();
+  src.buffer=buf; f.type='lowpass'; f.frequency.value=180;
+  src.connect(f); f.connect(g); g.connect(audioCtx.destination);
+  g.gain.setValueAtTime(0.6,audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.6);
+  src.start();
+  // Alarm tones
+  [0,0.15,0.3].forEach(d=>{
+    playTone(220,0.15,'sawtooth',0.12,d);
+    playTone(185,0.12,'sawtooth',0.12,d+0.06);
+  });
+}
+
+// Fix — pleasant resolution chord
+function sndFix(){
+  if(!soundOn||!audioCtx) return;
+  [[523,0],[659,0.06],[784,0.12],[1047,0.18]].forEach(([f,d])=>{
+    playTone(f,0.12,'sine',0.5,d);
+  });
+}
+
+// Unlock — soft click
+function sndUnlock(){
+  if(!soundOn||!audioCtx) return;
+  playTone(300,0.12,'triangle',0.1);
+  playTone(200,0.08,'triangle',0.12,0.06);
+}
+
+/* ══════════════════════════════════
+   STATE & UTILS
+══════════════════════════════════ */
+let running=false, timers=[], overlayResolve=null;
+const delay = ms=>new Promise(r=>{timers.push(setTimeout(r,ms));});
+const $     = id=>document.getElementById(id);
+
+function setStatus(msg,color='var(--dim)'){$('status').textContent=msg;$('status').style.color=color;}
+function setPill(txt,color='var(--dim)'){const p=$('phase-pill');p.textContent=txt;p.style.color=color;p.style.borderColor=color;}
+function setInfo(title,desc,badge,tc='var(--dead)',bc='var(--bord2)'){
+  $('info-title').textContent=title;$('info-title').style.color=tc;
+  $('info-desc').textContent=desc;
+  $('info-badge').textContent=badge;$('info-badge').style.color=tc;$('info-badge').style.borderColor=bc||tc;
+}
+
+function addLog(msg,cls='ls'){
+  const el=$('log');
+  while(el.children.length>=3) el.removeChild(el.children[0]);
+  const line=document.createElement('div');line.className='ll';
+  const ts=document.createElement('span');ts.className='lt';ts.textContent=new Date().toISOString().substr(11,8);
+  const m=document.createElement('span');m.className=cls;m.textContent='  '+msg;
+  line.appendChild(ts);line.appendChild(m);el.appendChild(line);
+}
+
+function showArrow(id,show=true,dead=false){
+  const el=$(id);
+  el.classList.toggle('show',show);
+  el.classList.toggle('dead',dead);
+  if(dead){el.setAttribute('marker-end','url(#arr-dead)');}
+}
+
+function setLock(id,state,ownerTxt=''){
+  const box=$(id);
+  box.className='lock-box';
+  if(state) box.classList.add(state);
+  const icon=box.querySelector('.lock-icon');
+  const owner=box.querySelector('.lock-owner');
+  if(state==='held-A'||state==='held-B'){icon.textContent='🔒';}
+  else if(state==='freed'){icon.textContent='🔓';}
+  else if(state==='contested'){icon.textContent='⚠️';}
+  else {icon.textContent='🔓';}
+  if(owner) owner.textContent=ownerTxt;
+  owner.style.color=state==='held-A'?'var(--A)':state==='held-B'?'var(--B)':state==='freed'?'var(--fix)':'var(--dim)';
+}
+
+function setThread(id,state){
+  const el=$(id);
+  el.className='thread';
+  if(state) el.classList.add(state);
+}
+
+function screenFlash(){
+  document.body.classList.remove('flash');
+  void document.body.offsetWidth;
+  document.body.classList.add('flash');
+}
+
+/* ══════════════════════════════════
+   OVERLAY
+══════════════════════════════════ */
+function showOverlay(icon,title,color,sub,code,tap='[ tap to continue ]'){
+  $('ov-icon').textContent=icon;
+  $('ov-title').textContent=title;$('ov-title').style.color=color;
+  $('ov-sub').innerHTML=sub;
+  $('ov-code').innerHTML=code;
+  $('ov-tap').textContent=tap;
+  $('overlay').classList.add('show');
+}
+function closeOverlay(){
+  $('overlay').classList.remove('show');
+  if(overlayResolve){overlayResolve();overlayResolve=null;}
+}
+const waitOverlay=()=>new Promise(r=>{overlayResolve=r;});
+
+/* ══════════════════════════════════
+   RESET
+══════════════════════════════════ */
+function reset(){
+  timers.forEach(clearTimeout);timers=[];
+  running=false;
+  ['tA','tB'].forEach(id=>setThread(id,''));
+  setLock('lA','','');setLock('lB','','');
+  ['svgA-holds-lA','svgB-holds-lB','svgA-wants-lB','svgB-wants-lA'].forEach(id=>showArrow(id,false));
+  $('dead-banner').classList.remove('show');
+  $('log').innerHTML='';
+  $('overlay').classList.remove('show');
+  setPill('READY','var(--dim)');
+  setStatus('Press Replay to start.');
+  setInfo('DEADLOCK','Two threads. Two locks. Each waiting for the other. Forever.','—','var(--dead)');
+}
+
+/* ══════════════════════════════════
+   MAIN ANIMATION
+══════════════════════════════════ */
+async function startAnim(){
+  if(running) return;
+  reset();
+  await delay(400);
+  running=true;
+
+  /* ── INTRO ── */
+  showOverlay(
+    '⛔','DEADLOCK','var(--dead)',
+    `Thread A holds Lock A, wants Lock B.<br>
+     Thread B holds Lock B, wants Lock A.<br>
+     <strong style="color:var(--text)">Neither can proceed. Both wait. Forever.</strong>`,
+    `<span class="cm">// The four Coffman conditions:</span>\n<span class="kw">1.</span> Mutual Exclusion  <span class="cm">// lock held by one thread</span>\n<span class="kw">2.</span> Hold and Wait    <span class="cm">// holding while requesting</span>\n<span class="kw">3.</span> No Preemption    <span class="cm">// can't steal a lock</span>\n<span class="kw">4.</span> Circular Wait    <span class="cm">// A→B→A cycle ← the killer</span>`
+  );
+  await waitOverlay();
+  if(!running) return;
+
+  setPill('ACT I','var(--A)');
+
+  /* ── ACT I: Both threads start ── */
+  setInfo('THREADS START','Thread A and Thread B both begin execution simultaneously.','Act I','var(--A)');
+  setStatus('Two threads spawned…','var(--text)');
+  addLog('Thread A spawned','la');
+  await delay(900);
+  addLog('Thread B spawned','lb');
+  await delay(900);
+
+  /* ── Thread A acquires Lock A ── */
+  setInfo('THREAD A ACQUIRES LOCK A','Thread A grabs Lock A first — succeeds immediately.','Lock A → held','var(--A)');
+  setStatus('Thread A → acquires Lock A ✓','var(--A)');
+  addLog('Thread A: lock(A) → ACQUIRED ✓','la');
+  sndLockAcquire(true);
+  setLock('lA','held-A','owned: A');
+  showArrow('svgA-holds-lA',true);
+  await delay(1200);
+
+  /* ── Thread B acquires Lock B ── */
+  setInfo('THREAD B ACQUIRES LOCK B','Thread B grabs Lock B — also succeeds immediately.','Lock B → held','var(--B)');
+  setStatus('Thread B → acquires Lock B ✓','var(--B)');
+  addLog('Thread B: lock(B) → ACQUIRED ✓','lb');
+  sndLockAcquire(false);
+  setLock('lB','held-B','owned: B');
+  showArrow('svgB-holds-lB',true);
+  await delay(1300);
+
+  setPill('ACT II','var(--dead)');
+
+  /* ── Thread A now wants Lock B ── */
+  setInfo('THREAD A WANTS LOCK B','Thread A needs Lock B next — but Thread B holds it. Thread A must wait.','Blocked!','var(--dead)');
+  setStatus('Thread A → wants Lock B… BLOCKED ⚠️','var(--dead)');
+  addLog('Thread A: lock(B) → BLOCKED — held by B','ld');
+  sndWaiting();
+  setThread('tA','waiting');
+  showArrow('svgA-wants-lB',true);
+  setLock('lB','contested','owned: B');
+  await delay(1400);
+
+  /* ── Thread B now wants Lock A ── */
+  setInfo('THREAD B WANTS LOCK A','Thread B needs Lock A — but Thread A holds it. Thread B also waits.','Blocked!','var(--dead)');
+  setStatus('Thread B → wants Lock A… BLOCKED ⚠️','var(--dead)');
+  addLog('Thread B: lock(A) → BLOCKED — held by A','ld');
+  sndWaiting();
+  setThread('tB','waiting');
+  showArrow('svgB-wants-lA',true);
+  setLock('lA','contested','owned: A');
+  await delay(1400);
+
+  /* ── DEADLOCK MOMENT ── */
+  setPill('DEADLOCK','var(--dead)');
+  setInfo('☠️ DEADLOCK DETECTED','Circular wait: A→B→A. Neither thread can proceed. System is frozen.','⛔ FROZEN','var(--dead)');
+  setStatus('DEADLOCK — system frozen forever ☠️','var(--dead)');
+  addLog('DEADLOCK DETECTED: circular wait A↔B','ld');
+
+  sndDeadlock();
+  screenFlash();
+  setThread('tA','deadlocked');
+  setThread('tB','deadlocked');
+
+  // Turn all arrows red
+  ['svgA-holds-lA','svgB-holds-lB','svgA-wants-lB','svgB-wants-lA'].forEach(id=>showArrow(id,true,true));
+
+  $('dead-banner').classList.add('show');
+  await delay(2000);
+
+  /* ── OVERLAY: explain deadlock ── */
+  showOverlay(
+    '☠️','CIRCULAR WAIT','var(--dead)',
+    `<strong style="color:var(--A)">Thread A</strong> holds Lock A, waiting for Lock B.<br>
+     <strong style="color:var(--B)">Thread B</strong> holds Lock B, waiting for Lock A.<br>
+     Neither will ever release. <strong style="color:var(--text)">This is a deadlock.</strong>`,
+    `<span class="cm">// Resource Allocation Graph — cycle = deadlock:</span>\n<span class="kw">A</span> → <span class="val">LockB</span> (waiting)\n<span class="kw">B</span> → <span class="val">LockA</span> (waiting)\n<span class="val">LockA</span> → <span class="kw">A</span> (held)\n<span class="val">LockB</span> → <span class="kw">B</span> (held)\n<span class="cm">// cycle detected ⟶ deadlock ⛔</span>`
+  );
+  await waitOverlay();
+  if(!running) return;
+
+  /* ── ACT III: THE FIX ── */
+  setPill('ACT III','var(--fix)');
+  $('dead-banner').classList.remove('show');
+
+  // Reset visual state partially
+  setThread('tA','');setThread('tB','');
+  ['svgA-holds-lA','svgB-holds-lB','svgA-wants-lB','svgB-wants-lA'].forEach(id=>showArrow(id,false));
+  setLock('lA','','');setLock('lB','','');
+  await delay(800);
+
+  setInfo('THE FIX: LOCK ORDERING','Enforce a consistent global lock order. ALWAYS acquire Lock A before Lock B.','Fix: ordering','var(--fix)');
+  setStatus('Fix: both threads acquire locks in the SAME order','var(--fix)');
+  addLog('FIX: enforce global lock order A → B','lf');
+  await delay(1200);
+
+  /* Thread A: A then B (correct order) */
+  setStatus('Thread A: lock(A) → lock(B) — correct order ✓','var(--fix)');
+  addLog('Thread A: lock(A) → ACQUIRED ✓','la');
+  sndLockAcquire(true);
+  setLock('lA','held-A','owned: A');
+  showArrow('svgA-holds-lA',true);
+  await delay(1100);
+
+  addLog('Thread A: lock(B) → ACQUIRED ✓ (no conflict)','la');
+  sndLockAcquire(true);
+  setLock('lB','held-A','owned: A');
+  showArrow('svgA-wants-lB',true);
+  await delay(1100);
+
+  setStatus('Thread A runs… then releases both locks','var(--fix)');
+  addLog('Thread A: work done → unlock(B) → unlock(A)','la');
+  sndUnlock();
+  setLock('lB','freed','free');
+  await delay(700);
+  sndUnlock();
+  setLock('lA','freed','free');
+  showArrow('svgA-holds-lA',false);
+  showArrow('svgA-wants-lB',false);
+  await delay(1100);
+
+  /* Thread B: also A then B */
+  setStatus('Thread B: lock(A) → lock(B) — same order, no deadlock ✓','var(--fix)');
+  addLog('Thread B: lock(A) → ACQUIRED ✓','lb');
+  sndLockAcquire(false);
+  setLock('lA','held-B','owned: B');
+  showArrow('svgB-holds-lB',true);
+  await delay(1100);
+
+  addLog('Thread B: lock(B) → ACQUIRED ✓','lb');
+  sndLockAcquire(false);
+  setLock('lB','held-B','owned: B');
+  await delay(1100);
+
+  addLog('Thread B: work done → unlock(B) → unlock(A)','lb');
+  sndUnlock();
+  setLock('lB','freed','free');
+  await delay(700);
+  sndUnlock();
+  setLock('lA','freed','free');
+  showArrow('svgB-holds-lB',false);
+  await delay(1000);
+
+  /* Both threads fixed */
+  sndFix();
+  setThread('tA','fixed');setThread('tB','fixed');
+  setInfo('✅ DEADLOCK PREVENTED','Consistent lock ordering breaks the circular wait. Problem solved.','✅ SAFE','var(--fix)');
+  setStatus('No deadlock! Both threads complete safely ✅','var(--fix)');
+  addLog('Both threads completed. No deadlock. ✅','lf');
+  await delay(1500);
+
+  if(!running) return;
+
+  /* ── FINAL OVERLAY ── */
+  showOverlay(
+    '✅','PROBLEM SOLVED','var(--fix)',
+    `<strong style="color:var(--text)">Lock Ordering</strong> prevents deadlock by breaking circular wait.<br>
+     Other fixes: <strong style="color:var(--lock)">Mutex Timeout</strong>, <strong style="color:var(--lock)">Banker's Algorithm</strong>, <strong style="color:var(--lock)">Lock-free structures</strong>.`,
+    `<span class="cm">// Prevention strategies:</span>\n<span class="fn">1. Lock Ordering</span>   <span class="cm">// always acquire in same order</span>\n<span class="fn">2. Trylock + backoff</span><span class="cm">// give up if can't acquire</span>\n<span class="fn">3. Lock-free DS</span>    <span class="cm">// atomics, CAS operations</span>\n<span class="fn">4. Avoid nesting</span>   <span class="cm">// hold only 1 lock at a time</span>`,
+    '[ tap to replay ]'
+  );
+  await waitOverlay();
+
+  running=false;
+  reset();
+  startAnim();
+}
+
+/* ══════════════════════════════════
+   BOOT
+══════════════════════════════════ */
+window.addEventListener('load',()=>{
+  reset();
+  setTimeout(startAnim,600);
+});
+</script>
+</body>
+</html>

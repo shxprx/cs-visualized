@@ -16,7 +16,7 @@ A collection of one-screen, fullscreen animations that make the hardest parts of
 | 04 | TCP Handshake | Networking | 🔜 Coming Soon |
 | 05 | [LRU Cache](lru-cache.html) | Data Structures | ✅ Live |
 | 06 | Load Balancer | System Design | 🔜 Coming Soon |
-| 07 | Deadlock | Concurrency | 🔜 Coming Soon |
+| 07 | [Deadlock](deadlock.html) | Concurrency | ✅ Live |
 | 08 | [How the Internet Works](internet.html) | Networking | ✅ Live |
 
 ---
@@ -29,6 +29,7 @@ cs-visualized/
 ├── click_run_explainer.html ← Animation 01
 ├── race_condition.html      ← Animation 02
 ├── lru-cache.html           ← Animation 05
+├── deadlock.html            ← Animation 07
 ├── internet.html            ← Animation 08
 └── README.md
 ```
